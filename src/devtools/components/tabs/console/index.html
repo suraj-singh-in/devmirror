@@ -1,0 +1,58 @@
+<!-- Filter bar — always visible in Console tab -->
+<div class="console-filter-bar" id="console-filter-bar">
+  <div class="filter-pills" role="radiogroup" aria-label="Log level filter">
+    <button class="filter-pill" role="radio" aria-checked="true"  data-level="all">All</button>
+    <button class="filter-pill" role="radio" aria-checked="false" data-level="log">Log</button>
+    <button class="filter-pill" role="radio" aria-checked="false" data-level="warn">Warn</button>
+    <button class="filter-pill" role="radio" aria-checked="false" data-level="error">Error</button>
+  </div>
+  <div class="filter-bar-right">
+    <button class="preserve-toggle" id="preserve-toggle"
+            role="switch" aria-checked="false" aria-label="Preserve logs">
+      <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+      <span class="toggle-label">Preserve logs</span>
+    </button>
+    <button class="console-clear-btn" id="console-clear-btn" aria-label="Clear logs">
+      <i class="ti ti-trash" aria-hidden="true"></i>
+    </button>
+  </div>
+</div>
+
+<!-- Waiting / never-connected empty state -->
+<div class="empty-state" id="empty-console">
+  <i class="ti ti-device-mobile-off" aria-hidden="true"></i>
+  <div class="empty-heading">Waiting for phone</div>
+  <div class="empty-body">Scan the QR code in your terminal to connect</div>
+</div>
+
+<!-- Two-pane layout (shown when connected) -->
+<div class="console-pane" id="console-pane" hidden>
+
+  <!-- Sidebar: 240px fixed -->
+  <aside class="console-sidebar">
+    <div class="console-search-wrap" id="console-search-wrap">
+      <i class="ti ti-search" aria-hidden="true"></i>
+      <input type="search" class="console-search" id="console-search"
+             placeholder="Search logs&hellip;" aria-label="Search logs"
+             autocomplete="off" spellcheck="false">
+    </div>
+    <div class="console-log-list" id="console-log-list" role="list"></div>
+  </aside>
+
+  <!-- Detail pane: flex 1 -->
+  <div class="console-detail">
+    <div class="empty-state console-detail-empty" id="empty-console-detail">
+      <i class="ti ti-hand-finger" aria-hidden="true"></i>
+      <div class="empty-heading">Select a log entry</div>
+      <div class="empty-body">Click any entry to see full details</div>
+    </div>
+    <div class="console-detail-view" id="console-detail-view" hidden>
+      <div class="detail-header" id="detail-header">
+        <div class="detail-msg" id="detail-msg"></div>
+        <div class="detail-meta" id="detail-meta"></div>
+      </div>
+      <div class="detail-body-scroll" id="detail-body-scroll"></div>
+    </div>
+  </div>
+
+</div>

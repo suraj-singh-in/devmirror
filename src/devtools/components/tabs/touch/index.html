@@ -1,0 +1,27 @@
+<!-- Waiting empty state — controlled by updateEmptyState -->
+<div class="empty-state" id="empty-touch">
+  <i class="ti ti-device-mobile-off" aria-hidden="true"></i>
+  <div class="empty-heading">Waiting for phone</div>
+  <div class="empty-body">Scan the QR code in your terminal to connect</div>
+</div>
+
+<!-- Touch content: toolbar + canvas (shown when connected) -->
+<div class="touch-content" id="touch-content" hidden>
+
+  <div class="touch-toolbar">
+    <span class="touch-count-label" id="touch-count">Touch events: 0</span>
+    <button class="border-btn" id="touch-clear-btn">Clear heatmap</button>
+  </div>
+
+  <div class="touch-canvas-wrap" id="touch-canvas-wrap">
+    <canvas id="touch-perm-canvas" aria-hidden="true"></canvas>
+    <canvas id="touch-fade-canvas" aria-hidden="true"></canvas>
+    <!-- "No touch events yet" overlay — hidden on first touch -->
+    <div class="empty-state touch-no-data" id="touch-no-data">
+      <i class="ti ti-hand-finger" aria-hidden="true"></i>
+      <div class="empty-heading">No touch events yet</div>
+      <div class="empty-body">Interact with your app on the phone</div>
+    </div>
+  </div>
+
+</div>

@@ -1,0 +1,392 @@
+/* ── Console tab shell ───────────────────────────────────────────────────── */
+#panel-console {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Waiting empty state fills remaining height after filter bar */
+#panel-console > #empty-console {
+  flex: 1;
+  height: auto;
+}
+
+/* ── Filter bar (h:36px, padding:0 12px) ─────────────────────────────────── */
+.console-filter-bar {
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-md);
+  background: var(--color-background-secondary);
+  border-bottom: 0.5px solid var(--dm-border);
+  gap: var(--space-sm);
+}
+
+/* ── Filter pills (r:999px, 11px sans) ───────────────────────────────────── */
+.filter-pills {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 0.5px solid var(--dm-border);
+  background: transparent;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+.filter-pill:hover {
+  background: var(--color-background-primary);
+  border-color: var(--dm-border-strong);
+  color: var(--color-text-primary);
+}
+.filter-pill[aria-checked="true"] {
+  background: var(--color-background-primary);
+  border-color: var(--dm-border-strong);
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+.filter-pill:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dm-blue);
+}
+
+.filter-bar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+}
+
+/* ── Preserve logs toggle (28×16px track, r:999px) ──────────────────────── */
+.preserve-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.preserve-toggle:focus-visible { outline: none; }
+.preserve-toggle:focus-visible .toggle-track {
+  box-shadow: 0 0 0 2px var(--dm-blue);
+}
+
+.toggle-track {
+  position: relative;
+  display: inline-block;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--color-background-primary);
+  border: 0.5px solid var(--dm-border);
+  flex-shrink: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.preserve-toggle:hover .toggle-track {
+  background: var(--color-background-secondary);
+  border-color: var(--dm-border-strong);
+}
+.preserve-toggle[aria-checked="true"] .toggle-track {
+  background: var(--dm-green);
+  border-color: transparent;
+}
+.preserve-toggle[aria-checked="true"]:hover .toggle-track {
+  background: #0F6E56;
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 1.5px;
+  left: 1.5px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--color-text-tertiary);
+  transition: left 0.15s ease, background 0.15s ease;
+}
+.preserve-toggle[aria-checked="true"] .toggle-thumb {
+  left: 13px;
+  background: #fff;
+}
+
+.toggle-label {
+  font-size: 11px;
+  font-family: var(--font-sans);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  user-select: none;
+}
+.preserve-toggle[aria-checked="true"] .toggle-label { color: var(--dm-green); }
+
+/* ── Clear button ────────────────────────────────────────────────────────── */
+.console-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 0.5px solid var(--dm-border);
+  background: transparent;
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+.console-clear-btn:hover {
+  background: var(--color-background-secondary);
+  border-color: var(--dm-border-strong);
+  color: var(--color-text-primary);
+}
+.console-clear-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dm-blue); }
+
+/* ── Two-pane layout ─────────────────────────────────────────────────────── */
+.console-pane {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Sidebar (w:240px, border-right:0.5px) ───────────────────────────────── */
+.console-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 0.5px solid var(--dm-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-background-secondary);
+}
+
+/* ── Search (py:8px px:12px, border-bottom:0.5px) ───────────────────────── */
+.console-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 0.5px solid var(--dm-border);
+  flex-shrink: 0;
+  background: var(--color-background-secondary);
+}
+.console-search-wrap > i {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+.console-search-wrap:focus-within {
+  box-shadow: 0 0 0 2px var(--dm-blue) inset;
+}
+
+.console-search {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+}
+.console-search::placeholder { color: var(--color-text-tertiary); }
+.console-search::-webkit-search-cancel-button { display: none; }
+
+/* ── Log list ────────────────────────────────────────────────────────────── */
+.console-log-list {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--color-background-primary);
+}
+
+/* ── Log row (padding:7px 12px) ──────────────────────────────────────────── */
+.log-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: 7px var(--space-md);
+  border-bottom: 0.5px solid var(--dm-border);
+  cursor: pointer;
+  user-select: none;
+}
+.log-row:hover        { background: var(--color-background-secondary); }
+.log-row[aria-selected="true"] { background: var(--dm-blue-bg); }
+.log-row:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dm-blue) inset; }
+
+/* Level badge — fixed visual width via mono + min-width (§12.4, §4.3) */
+.level-badge {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 400;
+  padding: 1px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  min-width: 34px;
+  text-align: center;
+  line-height: 1.4;
+}
+.level-badge[data-level="log"]   { background: var(--color-background-secondary); color: var(--color-text-secondary); }
+.level-badge[data-level="warn"]  { background: var(--dm-amber-bg);                color: var(--dm-amber); }
+.level-badge[data-level="error"] { background: var(--dm-red-bg);                  color: var(--dm-red); }
+
+/* Message preview — 2-line clamp (§12.4) */
+.log-msg-preview {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--color-text-primary);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+/* Timestamp — right-aligned, flex-shrink:0 (§12.4) */
+.log-time {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+/* ── Sidebar empty / cap states ──────────────────────────────────────────── */
+.console-list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: var(--space-xl);
+}
+.console-list-empty > i               { font-size: 32px; color: var(--color-text-tertiary); }
+.console-list-empty-heading           { font-size: 14px; font-weight: 500; color: var(--color-text-secondary); margin-top: 12px; }
+.console-list-empty-body              { font-size: 13px; color: var(--color-text-tertiary); margin-top: 4px; max-width: 200px; line-height: 1.5; }
+
+.console-cap-notice {
+  padding: 5px var(--space-md);
+  font-size: 11px;
+  font-family: var(--font-sans);
+  color: var(--dm-amber);
+  background: var(--dm-amber-bg);
+  border-bottom: 0.5px solid var(--dm-border);
+  text-align: center;
+}
+
+/* ── Detail pane ─────────────────────────────────────────────────────────── */
+.console-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-background-primary);
+}
+
+.console-detail-empty {
+  flex: 1;
+  height: auto;
+}
+
+.console-detail-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Detail header — pinned at top (§12.5) */
+.detail-header {
+  flex-shrink: 0;
+  padding: 14px var(--space-lg);
+  border-bottom: 0.5px solid var(--dm-border);
+  background: var(--color-background-primary);
+}
+
+/* Full message — 12px/500/mono (§5.2) */
+.detail-msg {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+/* Meta row — icon+text chips, gap:8px (§8.1) */
+.detail-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  color: var(--color-text-secondary);
+}
+.meta-chip > i          { font-size: 12px; color: var(--color-text-tertiary); }
+.meta-chip--error       { color: var(--dm-red); }
+.meta-chip--error > i   { color: var(--dm-red); }
+.meta-chip--warn        { color: var(--dm-amber); }
+.meta-chip--warn  > i   { color: var(--dm-amber); }
+
+/* Detail body — scrollable (§12.5) */
+.detail-body-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-lg);
+}
+
+.detail-section              { margin-bottom: 14px; }
+.detail-section:last-child   { margin-bottom: 0; }
+
+/* Section labels — 10px UPPERCASE tertiary (§5.2, §12.5) */
+.section-label {
+  font-size: 10px;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--space-sm);
+}
+
+/* Code/mono blocks — bg secondary, r:6px, 11.5px mono (§7) */
+.code-block {
+  background: var(--color-background-secondary);
+  border-radius: 6px;
+  padding: var(--space-md);
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+  overflow-x: auto;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+/* Stack trace — only file:line refs in green (§12.5) */
+.stack-line { display: block; }
+.stack-file { color: var(--dm-green); }

@@ -1,0 +1,101 @@
+/* ── Touch tab shell ─────────────────────────────────────────────────────── */
+#panel-touch {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Waiting empty state fills remaining height (before connect) */
+#panel-touch > #empty-touch {
+  flex: 1;
+  height: auto;
+}
+
+/* Touch content wraps toolbar + canvas as a flex column */
+.touch-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Toolbar (h:36px, §8.4) ──────────────────────────────────────────────── */
+.touch-toolbar {
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-lg);
+  background: var(--color-background-secondary);
+  border-bottom: 0.5px solid var(--dm-border);
+}
+
+.touch-count-label {
+  font-size: 13px;
+  font-family: var(--font-sans);
+  color: var(--color-text-secondary);
+}
+
+/* ── Standard border button (§9.8) ──────────────────────────────────────── */
+.border-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 0.5px solid var(--dm-border);
+  background: transparent;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s, color 0.1s, transform 0.08s;
+}
+.border-btn:hover {
+  background: var(--color-background-secondary);
+  border-color: var(--dm-border-strong);
+  color: var(--color-text-primary);
+}
+.border-btn:active {
+  background: var(--color-background-secondary);
+  border-color: var(--dm-border-strong);
+  transform: scale(0.97);
+}
+.border-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dm-blue);
+}
+.border-btn[aria-disabled="true"] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ── Canvas wrap (fills remaining height after toolbar) ──────────────────── */
+.touch-canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--color-background-primary);
+}
+
+/* Both canvases are positioned by JS to match the device aspect ratio */
+#touch-perm-canvas,
+#touch-fade-canvas {
+  position: absolute;
+  display: block;
+  box-shadow: 0 0 0 0.5px var(--dm-border);
+}
+
+#touch-fade-canvas {
+  pointer-events: none;
+}
+
+/* "No touch events yet" overlay — centered, transparent bg so canvas shows */
+.touch-no-data {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  height: auto;
+  background: transparent;
+}

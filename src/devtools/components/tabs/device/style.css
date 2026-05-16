@@ -1,0 +1,49 @@
+/* Device tab — card grid (§8.3) */
+
+.device-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: var(--space-lg);
+  overflow-y: auto;
+  height: 100%;
+  align-content: start;
+}
+.device-grid[hidden] { display: none; }
+
+.metric-card {
+  background: var(--color-background-secondary);
+  border-radius: 8px;
+  padding: var(--space-lg);
+}
+.card-full { grid-column: 1 / -1; }
+
+/* Card label: 10px UPPERCASE 500 tertiary (§5.2) */
+.card-label {
+  font-size: 10px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--space-sm);
+}
+
+/* Card metric value: 24px 500 primary (§5.2) */
+.card-value {
+  font-size: 24px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+  line-height: 1.2;
+}
+
+/* User Agent card value: 12px mono, word-break (§8.3) */
+.card-value-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-primary);
+  word-break: break-all;
+  line-height: 1.5;
+}

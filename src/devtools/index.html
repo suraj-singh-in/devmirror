@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>devmirror DevTools</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+  <!-- __DEVTOOLS_CSS__ -->
+</head>
+<body>
+
+<!-- ARIA live region for state announcements (§13) -->
+<div role="status" aria-live="polite" class="sr-only" id="aria-status"></div>
+
+<!-- ── TOPBAR ─────────────────────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="topbar-left">
+    <span class="conn-dot" id="logo-dot" data-state="waiting" aria-hidden="true"></span>
+    <span class="logo-wordmark">devmirror</span>
+  </div>
+
+  <div class="topbar-center">
+    <div class="device-pill" id="topbar-pill" data-state="waiting">
+      <span class="conn-dot" id="topbar-pill-dot" data-state="waiting" aria-hidden="true"></span>
+      <span class="pill-text" id="topbar-pill-text">Waiting for device&hellip;</span>
+    </div>
+  </div>
+
+  <div class="topbar-right">
+    <button class="topbar-btn" id="btn-reload"
+            aria-label="Reload phone" aria-disabled="true">
+      &#x21BA; Reload
+    </button>
+    <button class="topbar-btn" id="btn-disconnect"
+            aria-label="Disconnect" aria-disabled="true">
+      &#x2297; Disconnect
+    </button>
+  </div>
+</header>
+
+<!-- ── TAB BAR ────────────────────────────────────────────────────────────── -->
+<nav class="tabbar">
+  <div class="tabs" role="tablist" aria-label="DevTools panels">
+    <button class="tab" id="tab-device"
+            role="tab" aria-selected="true" aria-controls="panel-device" tabindex="0">
+      Device
+    </button>
+    <button class="tab" id="tab-console"
+            role="tab" aria-selected="false" aria-controls="panel-console" tabindex="-1">
+      Console
+      <span class="tab-badge" id="console-badge" aria-hidden="true"></span>
+    </button>
+    <button class="tab" id="tab-touch"
+            role="tab" aria-selected="false" aria-controls="panel-touch" tabindex="-1">
+      Touch
+    </button>
+    <button class="tab" id="tab-dom"
+            role="tab" aria-selected="false" aria-controls="panel-dom" tabindex="-1">
+      DOM
+    </button>
+    <button class="tab" id="tab-camera"
+            role="tab" aria-selected="false" aria-controls="panel-camera" tabindex="-1">
+      Camera
+    </button>
+  </div>
+
+  <div class="tabbar-pill-wrap">
+    <div class="device-pill" id="tabbar-pill" data-state="waiting">
+      <span class="conn-dot" id="tabbar-pill-dot" data-state="waiting" aria-hidden="true"></span>
+      <span class="pill-text" id="tabbar-pill-text">Waiting for device&hellip;</span>
+    </div>
+  </div>
+</nav>
+
+<!-- ── RECONNECT NOTICE (§10.3) ─────────────────────────────────────────── -->
+<div class="reconnect-bar" id="reconnect-bar" role="alert" hidden>
+  <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+  Lost connection &mdash; attempting to reconnect&hellip;
+</div>
+
+<!-- ── PANELS (content injected by proxy from components/tabs/*/index.html) ── -->
+<main class="panels">
+
+  <div class="panel" id="panel-device" role="tabpanel" aria-labelledby="tab-device"><!-- __TAB_device__ --></div>
+
+  <div class="panel" id="panel-console" role="tabpanel" aria-labelledby="tab-console" hidden><!-- __TAB_console__ --></div>
+
+  <div class="panel" id="panel-touch" role="tabpanel" aria-labelledby="tab-touch" hidden><!-- __TAB_touch__ --></div>
+
+  <div class="panel" id="panel-dom" role="tabpanel" aria-labelledby="tab-dom" hidden><!-- __TAB_dom__ --></div>
+
+  <div class="panel" id="panel-camera" role="tabpanel" aria-labelledby="tab-camera" hidden><!-- __TAB_camera__ --></div>
+
+</main>
+
+<script>
+  var BRIDGE_PORT = '__BRIDGE_PORT__';
+
+  // ── DOM refs ─────────────────────────────────────────────────────────────
+  var logoDot       = document.getElementById('logo-dot');
+  var topbarPill    = document.getElementById('topbar-pill');
+  var topbarDot     = document.getElementById('topbar-pill-dot');
+  var topbarText    = document.getElementById('topbar-pill-text');
+  var tabbarPill    = document.getElementById('tabbar-pill');
+  var tabbarDot     = document.getElementById('tabbar-pill-dot');
+  var tabbarText    = document.getElementById('tabbar-pill-text');
+  var btnReload     = document.getElementById('btn-reload');
+  var btnDisconnect = document.getElementById('btn-disconnect');
+  var reconnectBar  = document.getElementById('reconnect-bar');
+  var ariaStatus    = document.getElementById('aria-status');
+
+  // Device tab refs (elements injected from components/tabs/device/index.html)
+  var deviceGrid   = document.getElementById('device-grid');
+  var cardScreen   = document.getElementById('card-screen');
+  var cardViewport = document.getElementById('card-viewport');
+  var cardDpr      = document.getElementById('card-dpr');
+  var cardOs       = document.getElementById('card-os');
+  var cardUa       = document.getElementById('card-ua');
+
+  // ── Console tab state ─────────────────────────────────────────────────────
+  var consoleLogs      = [];       // source array — never mutated for filtering
+  var consoleLogsCapped = false;   // true once LOG_CAP was exceeded
+  var consoleFilter    = 'all';    // 'all' | 'log' | 'warn' | 'error'
+  var consoleSearch    = '';       // current search string
+  var consoleSelectedId = null;    // id of the currently selected log entry
+  var consoleUnread    = 0;        // logs received while Console tab was inactive
+  var preserveLogs     = false;    // if true, keep logs on phone_reconnected
+  var LOG_CAP          = 5000;
+  var logIdCounter     = 0;
+  var consoleUIReady   = false;    // true after consoleInitUI() has run
+
+  // Console DOM refs (populated by consoleInitUI)
+  var consoleLogListEl    = null;
+  var consoleSearchEl     = null;
+  var preserveToggleEl    = null;
+  var consoleClearBtnEl   = null;
+  var consolePaneEl       = null;
+  var emptyConsoleDetailEl = null;
+  var consoleDetailViewEl = null;
+  var detailMsgEl         = null;
+  var detailMetaEl        = null;
+  var detailBodyScrollEl  = null;
+
+  var TAB_IDS = ['device', 'console', 'touch', 'dom', 'camera'];
+
+  var tabEls   = {};
+  var panelEls = {};
+  var emptyEls = {};
+  TAB_IDS.forEach(function (id) {
+    tabEls[id]   = document.getElementById('tab-'   + id);
+    panelEls[id] = document.getElementById('panel-' + id);
+    emptyEls[id] = document.getElementById('empty-' + id);
+  });
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  var connState  = 'waiting'; // 'waiting' | 'connected' | 'disconnected'
+  var lastDevice = null;      // last dimensions/phone_connected payload
+  var activeTab  = 'device';
+
+  // Empty state content per tab per connection state (§10.2)
+  var EMPTY_CFG = {
+    device: {
+      waiting:   ['ti-device-mobile-off', 'Waiting for phone',  'Scan the QR code in your terminal to connect'],
+      connected: null, // Device tab shows card grid when connected
+    },
+    console: {
+      waiting:   ['ti-device-mobile-off', 'Waiting for phone',  'Scan the QR code in your terminal to connect'],
+      connected: null, // console-pane handles the connected state internally
+    },
+    touch: {
+      waiting:   ['ti-device-mobile-off', 'Waiting for phone',  'Scan the QR code in your terminal to connect'],
+      connected: null, // touch-content + touch-no-data overlay handle the connected state
+    },
+    dom: {
+      waiting:   ['ti-device-mobile-off', 'Waiting for phone',  'Scan the QR code in your terminal to connect'],
+      connected: ['ti-code',              'No DOM snapshot',      'Click \u2018Snapshot DOM\u2019 to capture the current page'],
+    },
+    camera: {
+      waiting:   ['ti-device-mobile-off', 'Waiting for phone',  'Scan the QR code in your terminal to connect'],
+      connected: ['ti-camera',            'Camera not started',  'Click \u2018Start camera\u2019 to begin streaming'],
+    },
+  };
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  /**
+   * Builds the device pill text from a dimensions payload.
+   * Format: Model · WxH · DPRx · OS  (§12.6)
+   *
+   * @param {object} device
+   * @returns {string}
+   */
+  function buildPillText(device) {
+    if (!device) { return 'Waiting for device\u2026'; }
+    var ua = device.ua || '';
+    var model = 'Unknown';
+    var os    = '';
+    var iosM  = ua.match(/CPU iPhone OS (\d+)_(\d+)/);
+    var ipadM = ua.match(/iPad.*CPU OS (\d+)_(\d+)/);
+    var droidM = ua.match(/Android ([\d.]+);\s*([^)]+)\)/);
+    if (iosM)       { model = 'iPhone'; os = 'iOS '    + iosM[1]  + '.' + iosM[2]; }
+    else if (ipadM) { model = 'iPad';   os = 'iPadOS ' + ipadM[1] + '.' + ipadM[2]; }
+    else if (droidM){ model = droidM[2].trim(); os = 'Android ' + droidM[1]; }
+    return model + ' \u00b7 ' + device.width + '\u00d7' + device.height +
+           ' \u00b7 ' + device.dpr + 'x' + (os ? ' \u00b7 ' + os : '');
+  }
+
+  /**
+   * Parses a raw user-agent string into "OS Version · Browser" for the OS card.
+   * Simple string matching — no external library.
+   *
+   * @param {string} ua
+   * @returns {string}
+   */
+  function parseOsBrowser(ua) {
+    if (!ua) { return '\u2014'; }
+    var iosM   = ua.match(/CPU iPhone OS (\d+)_(\d+)/);
+    var ipadM  = ua.match(/iPad.*CPU OS (\d+)_(\d+)/);
+    var droidM = ua.match(/Android ([\d.]+)/);
+    var macM   = ua.match(/Mac OS X (\d+)[_.](\d+)/);
+    var winM   = ua.match(/Windows NT ([\d.]+)/);
+    function browser(ua) {
+      return /CriOS/.test(ua) || /FxiOS/.test(ua) ? (/CriOS/.test(ua) ? 'Chrome' : 'Firefox')
+           : /Firefox\/[\d.]/.test(ua) ? 'Firefox'
+           : /Edg\/[\d.]/.test(ua)     ? 'Edge'
+           : /Chrome\/[\d.]/.test(ua)  ? 'Chrome'
+           : 'Safari';
+    }
+    if (iosM)  { return 'iOS '    + iosM[1]  + '.' + iosM[2]  + ' \u00b7 ' + browser(ua); }
+    if (ipadM) { return 'iPadOS ' + ipadM[1] + '.' + ipadM[2] + ' \u00b7 ' + browser(ua); }
+    if (droidM){ return 'Android ' + droidM[1] + ' \u00b7 ' + browser(ua); }
+    if (macM)  { return 'macOS '  + macM[1]  + '.' + macM[2]  + ' \u00b7 ' + browser(ua); }
+    if (winM)  { return 'Windows ' + winM[1]  + ' \u00b7 ' + browser(ua); }
+    return '\u2014';
+  }
+
+  /**
+   * Populates the Device tab card grid from a dimensions payload.
+   * Safe to call on every dimensions message — updates in-place (live rotation).
+   *
+   * @param {object} device
+   */
+  function populateDeviceTab(device) {
+    // Re-query lazily in case the component HTML was injected after script init.
+    if (!cardScreen)   { cardScreen   = document.getElementById('card-screen'); }
+    if (!cardViewport) { cardViewport = document.getElementById('card-viewport'); }
+    if (!cardDpr)      { cardDpr      = document.getElementById('card-dpr'); }
+    if (!cardOs)       { cardOs       = document.getElementById('card-os'); }
+    if (!cardUa)       { cardUa       = document.getElementById('card-ua'); }
+    if (!cardScreen)   { return; } // Elements not in DOM yet — bail safely.
+    if (!device || !device.width) { return; } // No dimension data yet.
+    cardScreen.textContent   = device.width + ' \u00d7 ' + device.height;
+    cardViewport.textContent = device.vw    + ' \u00d7 ' + device.vh;
+    cardDpr.textContent      = device.dpr   + '\u00d7';
+    cardOs.textContent       = parseOsBrowser(device.ua || '');
+    cardUa.textContent       = device.ua    || '\u2014';
+  }
+
+  /**
+   * Updates one tab's empty state element to match the connection state.
+   *
+   * @param {string} tabId
+   * @param {string} state  'waiting' | 'connected' | 'disconnected'
+   */
+  function updateEmptyState(tabId, state) {
+    var el = emptyEls[tabId];
+    if (!el) { return; }
+    // Disconnected: keep connected-state content unchanged (§10.3)
+    var key = (state === 'disconnected') ? (lastDevice ? 'connected' : 'waiting') : state;
+    var cfg = EMPTY_CFG[tabId][key];
+    if (!cfg) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.querySelector('i').className                    = 'ti ' + cfg[0];
+    el.querySelector('.empty-heading').textContent     = cfg[1];
+    el.querySelector('.empty-body').textContent        = cfg[2];
+  }
+
+  // ── Touch tab state ───────────────────────────────────────────────────────
+  var touchCount      = 0;
+  var touchFades      = []; // [{ x, y, startTime }]
+  var touchPermCanvas = null;
+  var touchFadeCanvas = null;
+  var touchCtxPerm    = null;
+  var touchCtxFade    = null;
+  var touchCountEl    = null;
+  var touchNoDataEl   = null;
+  var touchWrapEl     = null;
+  var touchContentEl  = null;
+  var touchRafId      = null;
+  var touchUIReady    = false;
+
+  // ── Console helpers ───────────────────────────────────────────────────────
+
+  function consoleShortTime(ts) {
+    var d = new Date(ts);
+    return ':' + String(d.getSeconds()).padStart(2, '0');
+  }
+
+  function consoleFullTime(ts) {
+    var d = new Date(ts);
+    return [d.getHours(), d.getMinutes(), d.getSeconds()]
+      .map(function(n) { return String(n).padStart(2, '0'); })
+      .join(':');
+  }
+
+  function consoleGetMessage(log) {
+    return log.args.join(' ');
+  }
+
+  function consoleGetFilteredLogs() {
+    return consoleLogs.filter(function(log) {
+      if (consoleFilter !== 'all' && log.level !== consoleFilter) { return false; }
+      if (consoleSearch) {
+        if (consoleGetMessage(log).toLowerCase().indexOf(consoleSearch.toLowerCase()) === -1) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+
+  function consoleBuildStackDOM(stackStr) {
+    var frag = document.createDocumentFragment();
+    stackStr.split('\n').forEach(function(line) {
+      var t = line.trim();
+      if (!t) { return; }
+      var el = document.createElement('span');
+      el.className = 'stack-line';
+      // Highlight file:line:col references in green
+      var FILE_RE = /((?:[a-zA-Z]:[/\\]|\.{0,2}[/\\])[^\s()"']+\.(?:js|mjs|cjs|ts|tsx|jsx):\d+(?::\d+)?)/g;
+      var parts = t.split(FILE_RE);
+      parts.forEach(function(part, i) {
+        if (!part) { return; }
+        if (i % 2 === 1) {
+          var s = document.createElement('span');
+          s.className = 'stack-file';
+          s.textContent = part;
+          el.appendChild(s);
+        } else {
+          el.appendChild(document.createTextNode(part));
+        }
+      });
+      frag.appendChild(el);
+    });
+    return frag;
+  }
+
+  function consoleUpdateBadge() {
+    var badge = document.getElementById('console-badge');
+    if (!badge) { return; }
+    var tabEl = document.getElementById('tab-console');
+    if (consoleUnread === 0) {
+      badge.classList.remove('visible');
+      badge.textContent = '';
+      if (tabEl) { tabEl.setAttribute('aria-label', 'Console'); }
+    } else {
+      var label = consoleUnread > 99 ? '99+' : String(consoleUnread);
+      badge.textContent = label;
+      badge.classList.add('visible');
+      if (tabEl) {
+        tabEl.setAttribute('aria-label', 'Console, ' + consoleUnread +
+          ' unread log' + (consoleUnread === 1 ? '' : 's'));
+      }
+    }
+  }
+
+  function consoleMakeRowEl(log) {
+    var row = document.createElement('div');
+    row.className = 'log-row';
+    row.setAttribute('role', 'listitem');
+    row.setAttribute('tabindex', '0');
+    row.setAttribute('data-id', String(log.id));
+    row.setAttribute('aria-selected', consoleSelectedId === log.id ? 'true' : 'false');
+
+    var badge = document.createElement('span');
+    badge.className = 'level-badge';
+    badge.setAttribute('data-level', log.level);
+    badge.textContent = log.level;
+    row.appendChild(badge);
+
+    var preview = document.createElement('span');
+    preview.className = 'log-msg-preview';
+    preview.textContent = consoleGetMessage(log);
+    row.appendChild(preview);
+
+    var ts = document.createElement('span');
+    ts.className = 'log-time';
+    ts.textContent = consoleShortTime(log.timestamp);
+    row.appendChild(ts);
+
+    row.addEventListener('click', function() { consoleSelectLog(log.id); });
+    row.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        consoleSelectLog(log.id);
+      }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        var rows = Array.prototype.slice.call(consoleLogListEl.querySelectorAll('.log-row'));
+        var idx  = rows.indexOf(row);
+        var next = e.key === 'ArrowDown' ? rows[idx + 1] : rows[idx - 1];
+        if (next) { next.focus(); }
+      }
+    });
+
+    return row;
+  }
+
+  function consoleRenderList() {
+    if (!consoleLogListEl) { return; }
+    consoleLogListEl.innerHTML = '';
+
+    if (consoleLogsCapped) {
+      var notice = document.createElement('div');
+      notice.className = 'console-cap-notice';
+      notice.textContent = 'Log limit reached \u2014 oldest entries removed';
+      consoleLogListEl.appendChild(notice);
+    }
+
+    if (consoleLogs.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'console-list-empty';
+      empty.innerHTML = '<i class="ti ti-terminal-2" aria-hidden="true"></i>' +
+        '<div class="console-list-empty-heading">No logs yet</div>' +
+        '<div class="console-list-empty-body">Waiting for console output from the phone</div>';
+      consoleLogListEl.appendChild(empty);
+      return;
+    }
+
+    var filtered = consoleGetFilteredLogs();
+    if (filtered.length === 0) {
+      var empty2 = document.createElement('div');
+      empty2.className = 'console-list-empty';
+      empty2.innerHTML = '<i class="ti ti-filter-off" aria-hidden="true"></i>' +
+        '<div class="console-list-empty-heading">No matching logs</div>' +
+        '<div class="console-list-empty-body">Try a different filter or clear your search</div>';
+      consoleLogListEl.appendChild(empty2);
+      return;
+    }
+
+    var frag = document.createDocumentFragment();
+    filtered.forEach(function(log) { frag.appendChild(consoleMakeRowEl(log)); });
+    consoleLogListEl.appendChild(frag);
+  }
+
+  function consoleRenderDetail(log) {
+    if (!emptyConsoleDetailEl) { emptyConsoleDetailEl = document.getElementById('empty-console-detail'); }
+    if (!consoleDetailViewEl)  { consoleDetailViewEl  = document.getElementById('console-detail-view'); }
+    if (!detailMsgEl)          { detailMsgEl          = document.getElementById('detail-msg'); }
+    if (!detailMetaEl)         { detailMetaEl         = document.getElementById('detail-meta'); }
+    if (!detailBodyScrollEl)   { detailBodyScrollEl   = document.getElementById('detail-body-scroll'); }
+
+    if (!log) {
+      if (emptyConsoleDetailEl) { emptyConsoleDetailEl.removeAttribute('hidden'); }
+      if (consoleDetailViewEl)  { consoleDetailViewEl.setAttribute('hidden', ''); }
+      return;
+    }
+
+    if (emptyConsoleDetailEl) { emptyConsoleDetailEl.setAttribute('hidden', ''); }
+    if (!consoleDetailViewEl) { return; }
+    consoleDetailViewEl.removeAttribute('hidden');
+
+    var msg = consoleGetMessage(log);
+    detailMsgEl.textContent = msg;
+
+    // Meta chips: time · device · level
+    detailMetaEl.innerHTML = '';
+
+    var timeChip = document.createElement('span');
+    timeChip.className = 'meta-chip';
+    var clockIcon = document.createElement('i');
+    clockIcon.className = 'ti ti-clock';
+    clockIcon.setAttribute('aria-hidden', 'true');
+    timeChip.appendChild(clockIcon);
+    timeChip.appendChild(document.createTextNode(consoleFullTime(log.timestamp)));
+    detailMetaEl.appendChild(timeChip);
+
+    if (lastDevice) {
+      var ua = lastDevice.ua || '';
+      var model = /CPU iPhone OS/.test(ua) ? 'iPhone'
+                : /iPad/.test(ua)          ? 'iPad'
+                : (function() { var m = ua.match(/Android [\d.]+;\s*([^)]+)\)/); return m ? m[1].trim() : 'Device'; })();
+      var devChip = document.createElement('span');
+      devChip.className = 'meta-chip';
+      var devIcon = document.createElement('i');
+      devIcon.className = 'ti ti-device-mobile';
+      devIcon.setAttribute('aria-hidden', 'true');
+      devChip.appendChild(devIcon);
+      devChip.appendChild(document.createTextNode(model));
+      detailMetaEl.appendChild(devChip);
+    }
+
+    var levelIconName = log.level === 'error' ? 'ti-circle-x'
+                      : log.level === 'warn'  ? 'ti-alert-triangle'
+                      : 'ti-info-circle';
+    var levelChip = document.createElement('span');
+    levelChip.className = 'meta-chip' +
+      (log.level === 'error' ? ' meta-chip--error' : log.level === 'warn' ? ' meta-chip--warn' : '');
+    var levelIcon = document.createElement('i');
+    levelIcon.className = 'ti ' + levelIconName;
+    levelIcon.setAttribute('aria-hidden', 'true');
+    levelChip.appendChild(levelIcon);
+    levelChip.appendChild(document.createTextNode(log.level));
+    detailMetaEl.appendChild(levelChip);
+
+    // Body sections
+    detailBodyScrollEl.innerHTML = '';
+
+    // MESSAGE
+    var msgSection = document.createElement('div');
+    msgSection.className = 'detail-section';
+    var msgLabel = document.createElement('div');
+    msgLabel.className = 'section-label';
+    msgLabel.textContent = 'Message';
+    var msgBlock = document.createElement('div');
+    msgBlock.className = 'code-block';
+    msgBlock.textContent = msg;
+    msgSection.appendChild(msgLabel);
+    msgSection.appendChild(msgBlock);
+    detailBodyScrollEl.appendChild(msgSection);
+
+    // STACK TRACE (if error arg contains a stack)
+    if (log.level === 'error' && log.args.length > 0) {
+      var firstArg = log.args[0];
+      if (firstArg.indexOf('\n') !== -1 && /at\s/.test(firstArg)) {
+        var stackSection = document.createElement('div');
+        stackSection.className = 'detail-section';
+        var stackLabel = document.createElement('div');
+        stackLabel.className = 'section-label';
+        stackLabel.textContent = 'Stack Trace';
+        var stackBlock = document.createElement('div');
+        stackBlock.className = 'code-block';
+        stackBlock.appendChild(consoleBuildStackDOM(firstArg));
+        stackSection.appendChild(stackLabel);
+        stackSection.appendChild(stackBlock);
+        detailBodyScrollEl.appendChild(stackSection);
+      }
+    }
+
+    // RAW ARGS
+    var argsSection = document.createElement('div');
+    argsSection.className = 'detail-section';
+    var argsLabel = document.createElement('div');
+    argsLabel.className = 'section-label';
+    argsLabel.textContent = 'Raw Args';
+    var argsBlock = document.createElement('div');
+    argsBlock.className = 'code-block';
+    try { argsBlock.textContent = JSON.stringify(log.args, null, 2); }
+    catch (e) { argsBlock.textContent = String(log.args); }
+    argsSection.appendChild(argsLabel);
+    argsSection.appendChild(argsBlock);
+    detailBodyScrollEl.appendChild(argsSection);
+  }
+
+  function consoleSelectLog(id) {
+    consoleSelectedId = id;
+    if (consoleLogListEl) {
+      var rows = consoleLogListEl.querySelectorAll('.log-row');
+      rows.forEach(function(row) {
+        row.setAttribute('aria-selected', row.getAttribute('data-id') === String(id) ? 'true' : 'false');
+      });
+    }
+    var log = null;
+    for (var i = 0; i < consoleLogs.length; i++) {
+      if (consoleLogs[i].id === id) { log = consoleLogs[i]; break; }
+    }
+    consoleRenderDetail(log);
+  }
+
+  function consoleClearLogs() {
+    consoleLogs      = [];
+    consoleLogsCapped = false;
+    consoleSelectedId = null;
+    consoleUnread    = 0;
+    consoleUpdateBadge();
+    consoleRenderList();
+    consoleRenderDetail(null);
+  }
+
+  function consoleAddLog(msg) {
+    var log = {
+      id:        ++logIdCounter,
+      level:     msg.level === 'warn' || msg.level === 'error' ? msg.level : 'log',
+      args:      Array.isArray(msg.args) ? msg.args : [],
+      timestamp: typeof msg.timestamp === 'number' ? msg.timestamp : Date.now(),
+    };
+    consoleLogs.push(log);
+    if (consoleLogs.length > LOG_CAP) {
+      consoleLogs.shift();
+      consoleLogsCapped = true;
+    }
+    if (activeTab !== 'console') {
+      consoleUnread++;
+      consoleUpdateBadge();
+    }
+    consoleRenderList();
+  }
+
+  function consoleInitUI() {
+    if (consoleUIReady) { return; }
+    consoleUIReady = true;
+
+    consoleLogListEl   = document.getElementById('console-log-list');
+    consoleSearchEl    = document.getElementById('console-search');
+    preserveToggleEl   = document.getElementById('preserve-toggle');
+    consoleClearBtnEl  = document.getElementById('console-clear-btn');
+    consolePaneEl      = document.getElementById('console-pane');
+
+    if (consoleSearchEl) {
+      consoleSearchEl.addEventListener('input', function() {
+        consoleSearch = consoleSearchEl.value;
+        consoleRenderList();
+      });
+    }
+
+    if (preserveToggleEl) {
+      preserveToggleEl.addEventListener('click', function() {
+        preserveLogs = !preserveLogs;
+        preserveToggleEl.setAttribute('aria-checked', String(preserveLogs));
+      });
+    }
+
+    if (consoleClearBtnEl) {
+      consoleClearBtnEl.addEventListener('click', function() { consoleClearLogs(); });
+    }
+
+    document.querySelectorAll('.filter-pill').forEach(function(pill) {
+      pill.addEventListener('click', function() {
+        var level = pill.getAttribute('data-level');
+        if (consoleFilter === level) { return; }
+        consoleFilter = level;
+        document.querySelectorAll('.filter-pill').forEach(function(p) {
+          p.setAttribute('aria-checked', String(p.getAttribute('data-level') === level));
+        });
+        consoleRenderList();
+      });
+    });
+  }
+
+  // ── Touch tab helpers ─────────────────────────────────────────────────────
+
+  function touchDrawBlob(ctx, x, y, radius, centerAlpha) {
+    var grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    grad.addColorStop(0, 'rgba(186,117,23,' + centerAlpha + ')');
+    grad.addColorStop(1, 'rgba(186,117,23,0)');
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }
+
+  function touchScaleCoords(x, y) {
+    var vw = (lastDevice && lastDevice.vw) ? lastDevice.vw : 1;
+    var vh = (lastDevice && lastDevice.vh) ? lastDevice.vh : 1;
+    var cw = touchPermCanvas ? touchPermCanvas.width  : 0;
+    var ch = touchPermCanvas ? touchPermCanvas.height : 0;
+    return { x: (x / vw) * cw, y: (y / vh) * ch };
+  }
+
+  function touchResize() {
+    if (!touchWrapEl || !touchPermCanvas || !touchFadeCanvas) { return; }
+    if (!lastDevice || !lastDevice.vw || !lastDevice.vh) { return; }
+    var wrapW = touchWrapEl.offsetWidth;
+    var wrapH = touchWrapEl.offsetHeight;
+    if (wrapW === 0 || wrapH === 0) { return; }
+    var deviceAspect = lastDevice.vw / lastDevice.vh;
+    var wrapAspect   = wrapW / wrapH;
+    var canvasW, canvasH;
+    if (deviceAspect > wrapAspect) {
+      canvasW = wrapW;
+      canvasH = Math.round(wrapW / deviceAspect);
+    } else {
+      canvasH = wrapH;
+      canvasW = Math.round(wrapH * deviceAspect);
+    }
+    var offsetX = Math.floor((wrapW - canvasW) / 2);
+    var offsetY = Math.floor((wrapH - canvasH) / 2);
+    [touchPermCanvas, touchFadeCanvas].forEach(function(c) {
+      c.width        = canvasW;
+      c.height       = canvasH;
+      c.style.width  = canvasW + 'px';
+      c.style.height = canvasH + 'px';
+      c.style.left   = offsetX + 'px';
+      c.style.top    = offsetY + 'px';
+      c.style.visibility = 'visible';
+    });
+    touchFades = [];
+    if (touchRafId) { cancelAnimationFrame(touchRafId); touchRafId = null; }
+  }
+
+  function touchRafLoop(now) {
+    if (!touchCtxFade || !touchFadeCanvas) { return; }
+    touchCtxFade.clearRect(0, 0, touchFadeCanvas.width, touchFadeCanvas.height);
+    var next = [];
+    for (var i = 0; i < touchFades.length; i++) {
+      var fade    = touchFades[i];
+      var progress = (now - fade.startTime) / 2000;
+      if (progress < 1) {
+        touchDrawBlob(touchCtxFade, fade.x, fade.y, 20, 0.8 * (1 - progress));
+        next.push(fade);
+      }
+    }
+    touchFades = next;
+    if (touchFades.length > 0) {
+      touchRafId = requestAnimationFrame(touchRafLoop);
+    } else {
+      touchRafId = null;
+    }
+  }
+
+  function touchHandleEvent(msg) {
+    if (!touchCtxPerm || !touchPermCanvas) { return; }
+    var coords = touchScaleCoords(msg.x, msg.y);
+    var cx = coords.x;
+    var cy = coords.y;
+
+    if (msg.kind === 'touchstart') {
+      touchDrawBlob(touchCtxPerm, cx, cy, 20, 0.8);
+      touchCount++;
+      if (touchCountEl) { touchCountEl.textContent = 'Touch events: ' + touchCount; }
+      if (touchCount === 1 && touchNoDataEl) { touchNoDataEl.setAttribute('hidden', ''); }
+    } else if (msg.kind === 'touchmove') {
+      touchDrawBlob(touchCtxPerm, cx, cy, 8, 0.4);
+    } else if (msg.kind === 'touchend') {
+      touchFades.push({ x: cx, y: cy, startTime: typeof msg.timestamp === 'number' ? msg.timestamp : Date.now() });
+      if (!touchRafId) { touchRafId = requestAnimationFrame(touchRafLoop); }
+    }
+  }
+
+  function touchClearHeatmap() {
+    if (touchCtxPerm && touchPermCanvas) {
+      touchCtxPerm.clearRect(0, 0, touchPermCanvas.width, touchPermCanvas.height);
+    }
+    if (touchCtxFade && touchFadeCanvas) {
+      touchCtxFade.clearRect(0, 0, touchFadeCanvas.width, touchFadeCanvas.height);
+    }
+    if (touchRafId) { cancelAnimationFrame(touchRafId); touchRafId = null; }
+    touchFades = [];
+    touchCount = 0;
+    if (touchCountEl) { touchCountEl.textContent = 'Touch events: 0'; }
+    if (touchNoDataEl) { touchNoDataEl.removeAttribute('hidden'); }
+  }
+
+  function touchInitUI() {
+    if (touchUIReady) { return; }
+    touchUIReady = true;
+
+    touchPermCanvas = document.getElementById('touch-perm-canvas');
+    touchFadeCanvas = document.getElementById('touch-fade-canvas');
+    touchCountEl    = document.getElementById('touch-count');
+    touchNoDataEl   = document.getElementById('touch-no-data');
+    touchWrapEl     = document.getElementById('touch-canvas-wrap');
+    touchContentEl  = document.getElementById('touch-content');
+
+    if (touchPermCanvas) { touchCtxPerm = touchPermCanvas.getContext('2d'); touchPermCanvas.style.visibility = 'hidden'; }
+    if (touchFadeCanvas) { touchCtxFade = touchFadeCanvas.getContext('2d'); touchFadeCanvas.style.visibility = 'hidden'; }
+
+    var clearBtn = document.getElementById('touch-clear-btn');
+    if (clearBtn) { clearBtn.addEventListener('click', touchClearHeatmap); }
+
+    window.addEventListener('resize', touchResize);
+    touchResize();
+  }
+
+  // ── Connection state machine ──────────────────────────────────────────────
+
+  /**
+   * Transitions to a new connection state and updates all UI surfaces.
+   *
+   * @param {string} newState  'waiting' | 'connected' | 'disconnected'
+   */
+  function applyState(newState) {
+    var prev  = connState;
+    connState = newState;
+
+    // Logo dot
+    logoDot.dataset.state = newState;
+
+    // Pill text
+    var pillText;
+    if (newState === 'connected') {
+      pillText = buildPillText(lastDevice);
+    } else if (newState === 'disconnected' && lastDevice) {
+      pillText = buildPillText(lastDevice) + ' (disconnected)';
+    } else {
+      pillText = 'Waiting for device\u2026';
+    }
+
+    [
+      { pill: topbarPill, dot: topbarDot, text: topbarText },
+      { pill: tabbarPill, dot: tabbarDot, text: tabbarText },
+    ].forEach(function (p) {
+      p.pill.dataset.state = newState;
+      p.dot.dataset.state  = newState;
+      p.text.textContent   = pillText;
+    });
+
+    // Topbar buttons — enabled only when connected (§9.3)
+    var disabled = newState !== 'connected';
+    [btnReload, btnDisconnect].forEach(function (btn) {
+      btn.setAttribute('aria-disabled', String(disabled));
+    });
+
+    // Reconnect notice bar — visible only in disconnected state (§10.3)
+    reconnectBar.hidden = (newState !== 'disconnected');
+
+    // Empty states for all tabs
+    TAB_IDS.forEach(function (id) { updateEmptyState(id, newState); });
+
+    // Device grid: show on connect, keep on disconnect, hide on waiting
+    if (!deviceGrid) { deviceGrid = document.getElementById('device-grid'); }
+    if (newState === 'connected') {
+      populateDeviceTab(lastDevice);
+      if (deviceGrid) { deviceGrid.removeAttribute('hidden'); }
+    } else if (newState === 'waiting') {
+      if (deviceGrid) { deviceGrid.setAttribute('hidden', ''); }
+    }
+
+    // Console pane: show on connect, keep on disconnect, hide on waiting
+    if (!consolePaneEl) { consolePaneEl = document.getElementById('console-pane'); }
+    if (newState === 'connected') {
+      consoleInitUI();
+      if (consolePaneEl) { consolePaneEl.removeAttribute('hidden'); }
+      consoleRenderList();
+    } else if (newState === 'waiting') {
+      if (consolePaneEl) { consolePaneEl.setAttribute('hidden', ''); }
+    }
+
+    // Touch content: show on connect, keep on disconnect, hide on waiting
+    if (!touchContentEl) { touchContentEl = document.getElementById('touch-content'); }
+    if (newState === 'connected') {
+      if (touchContentEl) { touchContentEl.removeAttribute('hidden'); }
+      touchInitUI();
+      touchResize();
+    } else if (newState === 'waiting') {
+      if (touchContentEl) { touchContentEl.setAttribute('hidden', ''); }
+    }
+
+    // ARIA live announcement (§13)
+    if (newState === 'connected') {
+      ariaStatus.textContent = 'Phone connected: ' + pillText;
+    } else if (newState === 'disconnected') {
+      ariaStatus.textContent = 'Phone disconnected \u2014 attempting to reconnect';
+    } else if (prev !== 'waiting') {
+      ariaStatus.textContent = 'Waiting for phone';
+    }
+  }
+
+  // ── Tab switching ─────────────────────────────────────────────────────────
+
+  /**
+   * Activates the given tab and hides all others.
+   *
+   * @param {string} tabId
+   */
+  function activateTab(tabId) {
+    TAB_IDS.forEach(function (id) {
+      var isActive = (id === tabId);
+      tabEls[id].setAttribute('aria-selected', String(isActive));
+      tabEls[id].setAttribute('tabindex', isActive ? '0' : '-1');
+      if (isActive) { panelEls[id].removeAttribute('hidden'); }
+      else          { panelEls[id].setAttribute('hidden', ''); }
+    });
+    activeTab = tabId;
+    // Reset Console unread badge when Console tab is activated (§11)
+    if (tabId === 'console') {
+      consoleUnread = 0;
+      consoleUpdateBadge();
+    }
+  }
+
+  TAB_IDS.forEach(function (id) {
+    tabEls[id].addEventListener('click', function () { activateTab(id); });
+
+    // Arrow-key navigation within tablist (§13)
+    tabEls[id].addEventListener('keydown', function (e) {
+      var idx = TAB_IDS.indexOf(id);
+      var next = null;
+      if (e.key === 'ArrowRight') { next = (idx + 1) % TAB_IDS.length; }
+      if (e.key === 'ArrowLeft')  { next = (idx - 1 + TAB_IDS.length) % TAB_IDS.length; }
+      if (next !== null) {
+        e.preventDefault();
+        activateTab(TAB_IDS[next]);
+        tabEls[TAB_IDS[next]].focus();
+      }
+    });
+  });
+
+  // ── Topbar button handlers ────────────────────────────────────────────────
+
+  btnReload.addEventListener('click', function () {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'reload' }));
+    }
+  });
+
+  btnDisconnect.addEventListener('click', function () {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'disconnect_phone' }));
+    }
+    lastDevice = null;
+    applyState('waiting');
+  });
+
+  // ── WebSocket bridge connection ───────────────────────────────────────────
+
+  var ws = null;
+
+  function connect() {
+    ws = new WebSocket('ws://localhost:' + BRIDGE_PORT);
+
+    ws.onopen = function () {
+      ws.send(JSON.stringify({ type: 'identify', role: 'devtools' }));
+    };
+
+    ws.onmessage = function (event) {
+      var msg;
+      try { msg = JSON.parse(event.data); } catch (e) { return; }
+      if (msg.type === 'phone_connected' || msg.type === 'phone_reconnected') {
+        if (msg.type === 'phone_reconnected' && !preserveLogs) { consoleClearLogs(); }
+        applyState('connected');
+      } else if (msg.type === 'dimensions') {
+        lastDevice = msg;
+        applyState('connected');
+      } else if (msg.type === 'phone_disconnected') {
+        applyState('disconnected');
+      } else if (msg.type === 'console') {
+        consoleAddLog(msg);
+      } else if (msg.type === 'touch') {
+        touchHandleEvent(msg);
+      }
+    };
+
+    ws.onclose = function () { setTimeout(connect, 2000); };
+    ws.onerror = function () {};
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  applyState('waiting');
+  connect();
+</script>
+</body>
+</html>
