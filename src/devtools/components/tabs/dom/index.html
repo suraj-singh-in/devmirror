@@ -24,8 +24,8 @@
   <!-- Two-pane layout (§3.2) -->
   <div class="dom-pane">
 
-    <!-- Sidebar: 280px fixed -->
-    <aside class="dom-sidebar">
+    <!-- Sidebar: resizable via drag handle -->
+    <aside class="dom-sidebar" id="dom-sidebar">
       <!-- No snapshot state (default when connected) -->
       <div class="empty-state dom-sidebar-empty" id="dom-sidebar-empty">
         <i class="ti ti-code" aria-hidden="true"></i>
@@ -38,9 +38,19 @@
         <div class="empty-heading">Fetching snapshot&hellip;</div>
         <div class="empty-body">Waiting for the phone to respond</div>
       </div>
+      <!-- Search bar (shown after snapshot arrives) -->
+      <div class="dom-search-bar" id="dom-search-bar" hidden>
+        <i class="ti ti-search" aria-hidden="true" style="font-size:12px;color:var(--color-text-tertiary);flex-shrink:0;"></i>
+        <input type="text" class="dom-search-input" id="dom-search-input"
+               placeholder="Search elements&hellip;" autocomplete="off" spellcheck="false"
+               aria-label="Search DOM elements">
+      </div>
       <!-- Element tree (shown after snapshot arrives) -->
       <div class="dom-tree" id="dom-tree" role="tree" aria-label="DOM element tree" hidden></div>
     </aside>
+
+    <!-- Drag handle between sidebar and detail pane -->
+    <div class="dom-resizer" id="dom-resizer" aria-hidden="true"></div>
 
     <!-- Detail pane -->
     <div class="dom-detail">
@@ -50,8 +60,37 @@
         <div class="empty-body">Click a node in the tree to see its details</div>
       </div>
       <div class="dom-detail-view" id="dom-detail-view" hidden>
-        <div class="dom-detail-header" id="dom-detail-header"></div>
-        <div class="dom-detail-body" id="dom-detail-body"></div>
+
+        <!-- Breadcrumb: ancestor chain like html > body > div -->
+        <div class="dom-breadcrumb" id="dom-breadcrumb"></div>
+
+        <!-- Sub-tab strip: Styles | Attributes -->
+        <div class="dom-detail-tabs" role="tablist">
+          <button class="dom-dtab dom-dtab-active" id="dom-dtab-styles"
+                  role="tab" aria-selected="true" aria-controls="dom-styles-panel">Styles</button>
+          <button class="dom-dtab" id="dom-dtab-attrs"
+                  role="tab" aria-selected="false" aria-controls="dom-attrs-panel">Attributes</button>
+        </div>
+
+        <!-- Styles panel -->
+        <div class="dom-styles-panel" id="dom-styles-panel" role="tabpanel">
+          <div class="dom-styles-filter-bar">
+            <i class="ti ti-filter" aria-hidden="true" style="font-size:11px;color:var(--color-text-tertiary);flex-shrink:0;"></i>
+            <input type="text" class="dom-styles-filter" id="dom-styles-filter"
+                   placeholder="Filter" autocomplete="off" aria-label="Filter CSS properties">
+          </div>
+          <div class="dom-styles-content" id="dom-styles-content">
+            <div class="dom-styles-loading" id="dom-styles-loading" hidden>
+              <i class="ti ti-loader dom-spin" aria-hidden="true"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Attributes panel -->
+        <div class="dom-attrs-panel" id="dom-attrs-panel" role="tabpanel" hidden>
+          <div class="dom-detail-body" id="dom-detail-body"></div>
+        </div>
+
       </div>
     </div>
 

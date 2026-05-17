@@ -122,6 +122,45 @@
       setTimeout(function () {
         send({ type: 'dom', html: document.documentElement.outerHTML });
       }, 0);
+    } else if (message.type === 'request_styles') {
+      var styleEl = document.querySelector(message.selector);
+      if (!styleEl) {
+        send({ type: 'styles', selector: message.selector, seq: message.seq, inline: {}, rules: [] });
+        return;
+      }
+      // Collect inline styles from the live element
+      var inlineStyles = {};
+      var sd = styleEl.style;
+      for (var si = 0; si < sd.length; si++) {
+        var sp = sd[si];
+        inlineStyles[sp] = { value: sd.getPropertyValue(sp), important: sd.getPropertyPriority(sp) === 'important' };
+      }
+      // Walk all stylesheets for rules matching this element
+      var matchedRules = [];
+      for (var ssi = 0; ssi < document.styleSheets.length; ssi++) {
+        var sheet = document.styleSheets[ssi];
+        var cssRules;
+        try { cssRules = sheet.cssRules || sheet.rules; } catch (e) { continue; }
+        if (!cssRules) { continue; }
+        for (var ri = 0; ri < cssRules.length; ri++) {
+          var rule = cssRules[ri];
+          if (!rule.selectorText) { continue; }
+          try {
+            if (!styleEl.matches(rule.selectorText)) { continue; }
+          } catch (e) { continue; }
+          var props = [];
+          var rs = rule.style;
+          for (var pi = 0; pi < rs.length; pi++) {
+            var rp = rs[pi];
+            props.push({ property: rp, value: rs.getPropertyValue(rp), important: rs.getPropertyPriority(rp) === 'important' });
+          }
+          if (!props.length) { continue; }
+          var href = sheet.href;
+          var src = href ? href.split('/').pop().split('?')[0] : '(index)';
+          matchedRules.push({ selector: rule.selectorText, source: src, properties: props });
+        }
+      }
+      send({ type: 'styles', selector: message.selector, seq: message.seq, inline: inlineStyles, rules: matchedRules });
     } else if (message.type === 'highlight') {
       var el = document.querySelector(message.selector);
       if (!el) { return; }

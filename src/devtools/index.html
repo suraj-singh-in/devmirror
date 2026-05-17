@@ -291,21 +291,39 @@
   var touchUIReady    = false;
 
   // ── DOM tab state ─────────────────────────────────────────────────────────
-  var domUIReady        = false;
-  var domSnapshot       = null;      // Document parsed from phone's outerHTML
-  var domSelectedNode   = null;      // currently selected Element in the snapshot
-  var domExpandedNodes  = null;      // WeakSet — which nodes are expanded in the tree
-  var domLoadingTimer   = null;      // 10-second snapshot timeout handle
-  var domContentEl      = null;
-  var domSidebarEmptyEl = null;
-  var domLoadingEl      = null;
-  var domTreeEl         = null;
-  var domDetailEmptyEl  = null;
-  var domDetailViewEl   = null;
-  var domDetailHeaderEl = null;
-  var domDetailBodyEl   = null;
-  var domSnapshotBtnEl  = null;
-  var domHighlightBtnEl = null;
+  var domUIReady           = false;
+  var domSnapshot          = null;      // Document parsed from phone's outerHTML
+  var domSelectedNode      = null;      // currently selected Element in the snapshot
+  var domExpandedNodes     = null;      // WeakSet — which nodes are expanded in the tree
+  var domLoadingTimer      = null;      // 10-second snapshot timeout handle
+  var domSearchQuery       = '';        // current element search string
+  var domStylesSeq         = 0;         // increments on each request_styles to avoid stale
+  var domStylesFilterQuery = '';        // current CSS property filter string
+  var domActiveDetailTab   = 'styles';  // 'styles' | 'attrs'
+  var domContentEl         = null;
+  var domSidebarEmptyEl    = null;
+  var domLoadingEl         = null;
+  var domTreeEl            = null;
+  var domSearchBarEl       = null;
+  var domSearchInputEl     = null;
+  var domDetailEmptyEl     = null;
+  var domDetailViewEl      = null;
+  var domBreadcrumbEl      = null;
+  var domDtabStylesEl      = null;
+  var domDtabAttrsEl       = null;
+  var domStylesPanelEl     = null;
+  var domStylesContentEl   = null;
+  var domStylesFilterEl    = null;
+  var domStylesLoadingEl   = null;
+  var domAttrsPanelEl      = null;
+  var domDetailBodyEl      = null;
+  var domSnapshotBtnEl     = null;
+  var domHighlightBtnEl    = null;
+  var domSidebarEl         = null;
+  var domResizerEl         = null;
+  var domResizerDragging   = false;
+  var domResizerStartX     = 0;
+  var domResizerStartW     = 0;
 
   // ── Console helpers ───────────────────────────────────────────────────────
 
@@ -807,14 +825,81 @@
     return tag + ':nth-child(' + n + ')';
   }
 
+  // Returns true if el's tag, id, class, or any attribute value matches query.
+  function domNodeMatchesSearch(el, query) {
+    var q = query.toLowerCase();
+    if (el.tagName.toLowerCase().indexOf(q) !== -1) { return true; }
+    if (el.id && el.id.toLowerCase().indexOf(q) !== -1) { return true; }
+    if (el.className && typeof el.className === 'string' && el.className.toLowerCase().indexOf(q) !== -1) { return true; }
+    var attrs = el.attributes;
+    for (var i = 0; i < attrs.length; i++) {
+      if (attrs[i].name.toLowerCase().indexOf(q) !== -1) { return true; }
+      if (attrs[i].value.toLowerCase().indexOf(q) !== -1) { return true; }
+    }
+    if (el.textContent && el.textContent.toLowerCase().indexOf(q) !== -1) { return true; }
+    return false;
+  }
+
+  // Recursively adds el to result if el or any descendant matches query.
+  // Returns true if any match was found in the subtree.
+  function domBuildMatchSet(el, query, result) {
+    var selfMatch = domNodeMatchesSearch(el, query);
+    var childMatch = false;
+    var child = el.firstElementChild;
+    while (child) {
+      if (domBuildMatchSet(child, query, result)) { childMatch = true; }
+      child = child.nextElementSibling;
+    }
+    if (selfMatch || childMatch) { result.add(el); }
+    return selfMatch || childMatch;
+  }
+
+  // Build breadcrumb spans for the detail pane ancestor chain.
+  function domBuildBreadcrumb(el) {
+    if (!domBreadcrumbEl) { return; }
+    domBreadcrumbEl.innerHTML = '';
+    var chain = [];
+    var cur = el;
+    while (cur && cur.tagName) { chain.unshift(cur); cur = cur.parentElement; }
+    chain.forEach(function (node, i) {
+      if (i > 0) {
+        var sep = document.createElement('span');
+        sep.className = 'dom-breadcrumb-sep';
+        sep.textContent = '›'; // ›
+        domBreadcrumbEl.appendChild(sep);
+      }
+      var tag = document.createElement('span');
+      tag.className = 'dom-breadcrumb-tag';
+      var label = node.tagName.toLowerCase();
+      if (node.id) { label += '#' + node.id; }
+      else if (node.className && typeof node.className === 'string') {
+        var cls = node.className.trim().split(/\s+/)[0];
+        if (cls) { label += '.' + cls; }
+      }
+      tag.textContent = label;
+      (function (n) {
+        tag.addEventListener('click', function () {
+          domSelectedNode = n;
+          domRenderTree();
+          domPopulateDetail(n);
+        });
+      }(node));
+      domBreadcrumbEl.appendChild(tag);
+    });
+  }
+
   // Recursively render one element node and its visible children into container.
-  function domRenderSubtree(container, el, depth) {
+  function domRenderSubtree(container, el, depth, matchSet) {
+    // When a search is active, skip nodes not in the match set.
+    if (matchSet && !matchSet.has(el)) { return; }
+
     var childEls = [];
     var child = el.firstElementChild;
     while (child) { childEls.push(child); child = child.nextElementSibling; }
 
     var hasChildren = childEls.length > 0;
-    var isExpanded  = domExpandedNodes.has(el);
+    // Auto-expand ancestors when search is active.
+    var isExpanded = matchSet ? true : domExpandedNodes.has(el);
 
     var row = document.createElement('div');
     row.className = 'dom-node';
@@ -824,34 +909,103 @@
     row.tabIndex = 0;
     row.style.paddingLeft = (12 + depth * 16) + 'px';
 
+    // Toggle arrow
     var toggle = document.createElement('span');
     toggle.className = 'dom-node-toggle';
     toggle.setAttribute('aria-hidden', 'true');
     toggle.textContent = hasChildren ? (isExpanded ? '▼' : '▶') : '';
     row.appendChild(toggle);
 
-    var tagEl = document.createElement('span');
-    tagEl.className = 'dom-node-tag';
-    tagEl.textContent = el.tagName.toLowerCase();
-    row.appendChild(tagEl);
+    // Opening tag wrapper
+    var openTag = document.createElement('span');
+    openTag.className = 'dom-node-open';
 
-    var hint = '';
-    if (el.id) { hint = '#' + el.id; }
-    if (el.className && typeof el.className === 'string') {
-      var firstClass = el.className.trim().split(/\s+/).filter(Boolean)[0];
-      if (firstClass) { hint += '.' + firstClass; }
-    }
-    if (hint) {
-      var hintEl = document.createElement('span');
-      hintEl.className = 'dom-node-hint';
-      hintEl.textContent = hint;
-      row.appendChild(hintEl);
+    var ang1 = document.createElement('span');
+    ang1.className = 'dom-node-angle';
+    ang1.textContent = '<';
+    openTag.appendChild(ang1);
+
+    var tagSpan = document.createElement('span');
+    tagSpan.className = 'dom-node-tag';
+    tagSpan.textContent = el.tagName.toLowerCase();
+    openTag.appendChild(tagSpan);
+
+    // Show priority attributes: id, class first, then up to 2 others
+    var PRIO_ATTRS = ['id', 'class', 'type', 'href', 'src', 'role', 'name', 'for', 'aria-label', 'style'];
+    var shownSet = {};
+    var shownCount = 0;
+    var totalAttrs = el.attributes.length;
+
+    function appendAttr(name, val) {
+      if (shownSet[name]) { return; }
+      shownSet[name] = true;
+      shownCount++;
+      var truncVal = val.length > 40 ? val.substring(0, 40) + '…' : val;
+
+      var aName = document.createElement('span');
+      aName.className = 'dom-node-attr-name';
+      aName.textContent = name;
+      var aEq = document.createElement('span');
+      aEq.className = 'dom-node-attr-eq';
+      aEq.textContent = '="';
+      var aVal = document.createElement('span');
+      aVal.className = 'dom-node-attr-val';
+      aVal.textContent = truncVal + '"';
+      openTag.appendChild(aName);
+      openTag.appendChild(aEq);
+      openTag.appendChild(aVal);
     }
 
-    // Capture el and hasChildren via closure (each call has its own scope).
+    PRIO_ATTRS.forEach(function (name) {
+      if (shownCount >= 4) { return; }
+      var v = el.getAttribute(name);
+      if (v !== null) { appendAttr(name, v); }
+    });
+    // Fill remaining slots with any other attrs
+    if (shownCount < 4) {
+      for (var ai = 0; ai < el.attributes.length && shownCount < 4; ai++) {
+        appendAttr(el.attributes[ai].name, el.attributes[ai].value);
+      }
+    }
+    // Overflow indicator
+    var shownKeys = Object.keys(shownSet).length;
+    if (totalAttrs > shownKeys) {
+      var more = document.createElement('span');
+      more.className = 'dom-node-more';
+      more.textContent = ' …';
+      openTag.appendChild(more);
+    }
+
+    var ang2 = document.createElement('span');
+    ang2.className = 'dom-node-angle';
+    ang2.textContent = '>';
+    openTag.appendChild(ang2);
+
+    // Text preview for leaf nodes
+    if (!hasChildren) {
+      var textContent = el.textContent;
+      if (textContent) {
+        var trimmed = textContent.trim().replace(/\s+/g, ' ');
+        if (trimmed) {
+          var textPreview = document.createElement('span');
+          textPreview.className = 'dom-node-text-preview';
+          textPreview.textContent = trimmed.length > 24 ? trimmed.substring(0, 24) + '…' : trimmed;
+          openTag.appendChild(textPreview);
+
+          var closingTag = document.createElement('span');
+          closingTag.className = 'dom-node-angle';
+          closingTag.textContent = '</' + el.tagName.toLowerCase() + '>';
+          openTag.appendChild(closingTag);
+        }
+      }
+    }
+
+    row.appendChild(openTag);
+
+    // Click: toggle expand/collapse and select
     row.addEventListener('click', function (e) {
       e.stopPropagation();
-      if (hasChildren) {
+      if (hasChildren && !matchSet) {
         if (domExpandedNodes.has(el)) { domExpandedNodes.delete(el); }
         else { domExpandedNodes.add(el); }
       }
@@ -864,7 +1018,7 @@
     container.appendChild(row);
 
     if (isExpanded) {
-      childEls.forEach(function (childEl) { domRenderSubtree(container, childEl, depth + 1); });
+      childEls.forEach(function (childEl) { domRenderSubtree(container, childEl, depth + 1, matchSet); });
     }
   }
 
@@ -873,110 +1027,202 @@
     if (!domTreeEl || !domSnapshot) { return; }
     var scrollTop = domTreeEl.scrollTop;
     domTreeEl.innerHTML = '';
-    domRenderSubtree(domTreeEl, domSnapshot.documentElement, 0);
+    var matchSet = null;
+    if (domSearchQuery) {
+      matchSet = new Set();
+      domBuildMatchSet(domSnapshot.documentElement, domSearchQuery, matchSet);
+    }
+    domRenderSubtree(domTreeEl, domSnapshot.documentElement, 0, matchSet);
     domTreeEl.scrollTop = scrollTop;
   }
 
-  // Populate the detail pane with tag, attributes, and dimensions.
+  // Populate the detail pane: breadcrumb, attributes panel, and request live styles.
   function domPopulateDetail(el) {
-    if (!domDetailEmptyEl || !domDetailViewEl || !domDetailHeaderEl || !domDetailBodyEl) { return; }
+    if (!domDetailEmptyEl || !domDetailViewEl) { return; }
     domDetailEmptyEl.setAttribute('hidden', '');
     domDetailViewEl.removeAttribute('hidden');
 
-    // Header — tag and class/id string
-    domDetailHeaderEl.innerHTML = '';
-    var tagDiv = document.createElement('div');
-    tagDiv.className = 'dom-detail-tag';
-    tagDiv.textContent = '<' + el.tagName.toLowerCase() + '>';
-    domDetailHeaderEl.appendChild(tagDiv);
+    // Breadcrumb
+    domBuildBreadcrumb(el);
 
-    var classDisplay = '';
-    if (el.className && typeof el.className === 'string' && el.className.trim()) {
-      classDisplay = '.' + el.className.trim().split(/\s+/).join('.');
-    }
-    if (el.id) { classDisplay += (classDisplay ? ' ' : '') + '#' + el.id; }
-    if (classDisplay) {
-      var classDiv = document.createElement('div');
-      classDiv.className = 'dom-detail-classes';
-      classDiv.textContent = classDisplay;
-      domDetailHeaderEl.appendChild(classDiv);
-    }
-
-    // Body — sections
-    domDetailBodyEl.innerHTML = '';
-
-    // ATTRIBUTES section
-    var attrs = el.attributes;
-    if (attrs && attrs.length > 0) {
-      var aSection = document.createElement('div');
-      aSection.className = 'dom-section';
-      var aLabel = document.createElement('div');
-      aLabel.className = 'dom-section-label';
-      aLabel.textContent = 'Attributes';
-      var aBlock = document.createElement('div');
-      aBlock.className = 'dom-attr-block';
-      var aTable = document.createElement('table');
-      aTable.className = 'dom-attr-table';
-      var aTbody = document.createElement('tbody');
-      for (var i = 0; i < attrs.length; i++) {
-        var tr = document.createElement('tr');
-        var tdN = document.createElement('td');
-        tdN.textContent = attrs[i].name;
-        var tdV = document.createElement('td');
-        tdV.textContent = '"' + attrs[i].value + '"';
-        tr.appendChild(tdN);
-        tr.appendChild(tdV);
-        aTbody.appendChild(tr);
+    // Attributes panel
+    if (domDetailBodyEl) {
+      domDetailBodyEl.innerHTML = '';
+      var attrs = el.attributes;
+      if (attrs && attrs.length > 0) {
+        var aSection = document.createElement('div');
+        aSection.className = 'dom-section';
+        var aLabel = document.createElement('div');
+        aLabel.className = 'dom-section-label';
+        aLabel.textContent = 'Attributes';
+        var aBlock = document.createElement('div');
+        aBlock.className = 'dom-attr-block';
+        var aTable = document.createElement('table');
+        aTable.className = 'dom-attr-table';
+        var aTbody = document.createElement('tbody');
+        for (var i = 0; i < attrs.length; i++) {
+          var tr = document.createElement('tr');
+          var tdN = document.createElement('td');
+          tdN.textContent = attrs[i].name;
+          var tdV = document.createElement('td');
+          tdV.textContent = '"' + attrs[i].value + '"';
+          tr.appendChild(tdN);
+          tr.appendChild(tdV);
+          aTbody.appendChild(tr);
+        }
+        aTable.appendChild(aTbody);
+        aBlock.appendChild(aTable);
+        aSection.appendChild(aLabel);
+        aSection.appendChild(aBlock);
+        domDetailBodyEl.appendChild(aSection);
+      } else {
+        var noAttr = document.createElement('div');
+        noAttr.className = 'dom-styles-empty-hint';
+        noAttr.textContent = 'No attributes.';
+        domDetailBodyEl.appendChild(noAttr);
       }
-      aTable.appendChild(aTbody);
-      aBlock.appendChild(aTable);
-      aSection.appendChild(aLabel);
-      aSection.appendChild(aBlock);
-      domDetailBodyEl.appendChild(aSection);
     }
 
-    // DIMENSIONS section — inline styles only in v0.3 (no getBoundingClientRect)
-    function getDim(prop) {
-      var s = el.style && el.style[prop];
-      if (s) { return s; }
-      if ((prop === 'width' || prop === 'height') && el.getAttribute(prop)) {
-        return el.getAttribute(prop) + 'px';
-      }
-      return '—';
+    // Request live CSS styles from the phone — clear old blocks, show spinner
+    if (domStylesContentEl) {
+      var toRemove = domStylesContentEl.querySelectorAll('.dom-css-block, .dom-styles-empty-hint');
+      for (var tri = 0; tri < toRemove.length; tri++) { toRemove[tri].remove(); }
     }
-    var dSection = document.createElement('div');
-    dSection.className = 'dom-section';
-    var dLabel = document.createElement('div');
-    dLabel.className = 'dom-section-label';
-    dLabel.textContent = 'Dimensions';
-    var dBlock = document.createElement('div');
-    dBlock.className = 'dom-attr-block';
-    var dTable = document.createElement('table');
-    dTable.className = 'dom-attr-table';
-    var dTbody = document.createElement('tbody');
-    [['width', 'height'], ['top', 'left']].forEach(function (pair) {
-      var tr = document.createElement('tr');
-      pair.forEach(function (dim, j) {
-        var tdN = document.createElement('td');
-        tdN.textContent = dim;
-        var tdV = document.createElement('td');
-        tdV.className = j === 0 ? 'dom-dim-val' : '';
-        tdV.textContent = getDim(dim);
-        tr.appendChild(tdN);
-        tr.appendChild(tdV);
+    if (domStylesLoadingEl) { domStylesLoadingEl.removeAttribute('hidden'); }
+    var seq = ++domStylesSeq;
+    var selector = domGenerateSelector(el);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'request_styles', selector: selector, seq: seq }));
+    } else {
+      // Offline: show snapshot inline styles only
+      domHandleStyles({ seq: seq, inline: {}, rules: [], offline: true });
+    }
+  }
+
+  // Build a single CSS rule block DOM node.
+  function domBuildCssBlock(selector, source, properties) {
+    var block = document.createElement('div');
+    block.className = 'dom-css-block';
+
+    var header = document.createElement('div');
+    header.className = 'dom-css-header';
+    var selEl = document.createElement('span');
+    selEl.className = 'dom-css-selector';
+    selEl.textContent = selector;
+    header.appendChild(selEl);
+    if (source) {
+      var srcEl = document.createElement('span');
+      srcEl.className = 'dom-css-source';
+      srcEl.textContent = source;
+      header.appendChild(srcEl);
+    }
+    block.appendChild(header);
+
+    var openBrace = document.createElement('div');
+    openBrace.className = 'dom-css-brace';
+    openBrace.textContent = '{';
+    block.appendChild(openBrace);
+
+    if (properties && properties.length) {
+      properties.forEach(function (prop) {
+        var row = document.createElement('div');
+        row.className = 'dom-css-prop-row';
+        var pName = document.createElement('span');
+        pName.className = 'dom-css-prop-name';
+        pName.textContent = prop.property;
+        var colon = document.createElement('span');
+        colon.className = 'dom-css-colon';
+        colon.textContent = ':';
+        var pVal = document.createElement('span');
+        pVal.className = 'dom-css-prop-value';
+        pVal.textContent = ' ' + prop.value + ';';
+        row.appendChild(pName);
+        row.appendChild(colon);
+        row.appendChild(pVal);
+        if (prop.important) {
+          var imp = document.createElement('span');
+          imp.className = 'dom-css-important';
+          imp.textContent = ' !important';
+          row.appendChild(imp);
+        }
+        block.appendChild(row);
       });
-      dTbody.appendChild(tr);
+    } else {
+      var empty = document.createElement('div');
+      empty.className = 'dom-css-prop-row';
+      empty.style.color = 'var(--color-text-tertiary)';
+      empty.textContent = '  /* empty */';
+      block.appendChild(empty);
+    }
+
+    var closeBrace = document.createElement('div');
+    closeBrace.className = 'dom-css-brace';
+    closeBrace.textContent = '}';
+    block.appendChild(closeBrace);
+    return block;
+  }
+
+  // Render styles response into the styles content area.
+  function domHandleStyles(data) {
+    if (data.seq !== domStylesSeq) { return; } // stale response
+    if (!domStylesContentEl) { return; }
+    // Hide spinner, remove previous rule blocks
+    if (domStylesLoadingEl) { domStylesLoadingEl.setAttribute('hidden', ''); }
+    var toRemove = domStylesContentEl.querySelectorAll('.dom-css-block, .dom-styles-empty-hint');
+    for (var tri = 0; tri < toRemove.length; tri++) { toRemove[tri].remove(); }
+
+    // element.style block (always shown)
+    var inlineProps = Object.keys(data.inline || {}).map(function (p) {
+      return { property: p, value: data.inline[p].value, important: data.inline[p].important };
     });
-    dTable.appendChild(dTbody);
-    dBlock.appendChild(dTable);
-    dSection.appendChild(dLabel);
-    dSection.appendChild(dBlock);
-    domDetailBodyEl.appendChild(dSection);
+    domStylesContentEl.appendChild(domBuildCssBlock('element.style', '', inlineProps));
+
+    // Matched stylesheet rules
+    (data.rules || []).forEach(function (rule) {
+      domStylesContentEl.appendChild(domBuildCssBlock(rule.selector, rule.source, rule.properties));
+    });
+
+    if (data.offline) {
+      var hint = document.createElement('div');
+      hint.className = 'dom-styles-empty-hint';
+      hint.textContent = 'Live styles unavailable — phone not connected.';
+      domStylesContentEl.appendChild(hint);
+    }
+
+    // Apply any existing filter
+    if (domStylesFilterQuery) { domFilterStyles(); }
+  }
+
+  // Filter visible CSS properties by domStylesFilterQuery.
+  function domFilterStyles() {
+    if (!domStylesContentEl) { return; }
+    var q = domStylesFilterQuery.toLowerCase();
+    var blocks = domStylesContentEl.querySelectorAll('.dom-css-block');
+    for (var bi = 0; bi < blocks.length; bi++) {
+      var block = blocks[bi];
+      var rows = block.querySelectorAll('.dom-css-prop-row');
+      var anyVisible = false;
+      for (var ri = 0; ri < rows.length; ri++) {
+        var row = rows[ri];
+        var pName = row.querySelector('.dom-css-prop-name');
+        var pVal  = row.querySelector('.dom-css-prop-value');
+        var text  = (pName ? pName.textContent : '') + ':' + (pVal ? pVal.textContent : '');
+        var match = !q || text.toLowerCase().indexOf(q) !== -1;
+        row.classList.toggle('dom-css-filtered', !match);
+        if (match) { anyVisible = true; }
+      }
+      // Hide entire block if all rows are filtered out (but not the element.style block)
+      var selEl = block.querySelector('.dom-css-selector');
+      if (selEl && selEl.textContent !== 'element.style') {
+        block.hidden = (rows.length > 0 && !anyVisible && !!q);
+      }
+    }
   }
 
   // Show loading state and arm the 10-second timeout.
   function domShowLoading() {
     if (domSidebarEmptyEl) { domSidebarEmptyEl.setAttribute('hidden', ''); }
+    if (domSearchBarEl)    { domSearchBarEl.setAttribute('hidden', ''); }
     if (domTreeEl) { domTreeEl.setAttribute('hidden', ''); }
     if (domLoadingEl) { domLoadingEl.removeAttribute('hidden'); }
     if (domLoadingTimer !== null) { clearTimeout(domLoadingTimer); }
@@ -1006,6 +1252,7 @@
     if (domDetailViewEl) { domDetailViewEl.setAttribute('hidden', ''); }
     if (domLoadingEl) { domLoadingEl.setAttribute('hidden', ''); }
     if (domSidebarEmptyEl) { domSidebarEmptyEl.setAttribute('hidden', ''); }
+    if (domSearchBarEl) { domSearchBarEl.removeAttribute('hidden'); }
     if (domTreeEl) { domTreeEl.removeAttribute('hidden'); }
     domRenderTree();
   }
@@ -1014,16 +1261,53 @@
   function domInitUI() {
     if (domUIReady) { return; }
     domUIReady = true;
-    domContentEl      = document.getElementById('dom-content');
-    domSidebarEmptyEl = document.getElementById('dom-sidebar-empty');
-    domLoadingEl      = document.getElementById('dom-loading');
-    domTreeEl         = document.getElementById('dom-tree');
-    domDetailEmptyEl  = document.getElementById('dom-detail-empty');
-    domDetailViewEl   = document.getElementById('dom-detail-view');
-    domDetailHeaderEl = document.getElementById('dom-detail-header');
-    domDetailBodyEl   = document.getElementById('dom-detail-body');
-    domSnapshotBtnEl  = document.getElementById('dom-snapshot-btn');
-    domHighlightBtnEl = document.getElementById('dom-highlight-btn');
+    domContentEl       = document.getElementById('dom-content');
+    domSidebarEmptyEl  = document.getElementById('dom-sidebar-empty');
+    domLoadingEl       = document.getElementById('dom-loading');
+    domTreeEl          = document.getElementById('dom-tree');
+    domSearchBarEl     = document.getElementById('dom-search-bar');
+    domSearchInputEl   = document.getElementById('dom-search-input');
+    domDetailEmptyEl   = document.getElementById('dom-detail-empty');
+    domDetailViewEl    = document.getElementById('dom-detail-view');
+    domBreadcrumbEl    = document.getElementById('dom-breadcrumb');
+    domDtabStylesEl    = document.getElementById('dom-dtab-styles');
+    domDtabAttrsEl     = document.getElementById('dom-dtab-attrs');
+    domStylesPanelEl   = document.getElementById('dom-styles-panel');
+    domStylesContentEl = document.getElementById('dom-styles-content');
+    domStylesFilterEl  = document.getElementById('dom-styles-filter');
+    domStylesLoadingEl = document.getElementById('dom-styles-loading');
+    domAttrsPanelEl    = document.getElementById('dom-attrs-panel');
+    domDetailBodyEl    = document.getElementById('dom-detail-body');
+    domSnapshotBtnEl   = document.getElementById('dom-snapshot-btn');
+    domHighlightBtnEl  = document.getElementById('dom-highlight-btn');
+    domSidebarEl       = document.getElementById('dom-sidebar');
+    domResizerEl       = document.getElementById('dom-resizer');
+
+    // Sidebar resize — mousedown on handle, move/up on document
+    if (domResizerEl && domSidebarEl) {
+      domResizerEl.addEventListener('mousedown', function (e) {
+        domResizerDragging = true;
+        domResizerStartX   = e.clientX;
+        domResizerStartW   = domSidebarEl.offsetWidth;
+        domResizerEl.classList.add('dom-resizer-dragging');
+        document.body.style.cursor    = 'col-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+      });
+    }
+    document.addEventListener('mousemove', function (e) {
+      if (!domResizerDragging || !domSidebarEl) { return; }
+      var dx   = e.clientX - domResizerStartX;
+      var newW = Math.max(160, Math.min(520, domResizerStartW + dx));
+      domSidebarEl.style.width = newW + 'px';
+    });
+    document.addEventListener('mouseup', function () {
+      if (!domResizerDragging) { return; }
+      domResizerDragging = false;
+      if (domResizerEl) { domResizerEl.classList.remove('dom-resizer-dragging'); }
+      document.body.style.cursor     = '';
+      document.body.style.userSelect = '';
+    });
 
     if (domSnapshotBtnEl) {
       domSnapshotBtnEl.addEventListener('click', function () {
@@ -1037,6 +1321,46 @@
       domHighlightBtnEl.addEventListener('click', function () {
         if (!domSelectedNode || !ws || ws.readyState !== WebSocket.OPEN) { return; }
         ws.send(JSON.stringify({ type: 'highlight', selector: domGenerateSelector(domSelectedNode) }));
+      });
+    }
+
+    // Search input — re-render tree as user types
+    if (domSearchInputEl) {
+      domSearchInputEl.addEventListener('input', function () {
+        domSearchQuery = domSearchInputEl.value.trim();
+        domRenderTree();
+      });
+      domSearchInputEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { domSearchInputEl.value = ''; domSearchQuery = ''; domRenderTree(); }
+      });
+    }
+
+    // Detail sub-tabs
+    function switchDetailTab(tab) {
+      domActiveDetailTab = tab;
+      var isStyles = tab === 'styles';
+      if (domDtabStylesEl) {
+        domDtabStylesEl.classList.toggle('dom-dtab-active', isStyles);
+        domDtabStylesEl.setAttribute('aria-selected', String(isStyles));
+      }
+      if (domDtabAttrsEl) {
+        domDtabAttrsEl.classList.toggle('dom-dtab-active', !isStyles);
+        domDtabAttrsEl.setAttribute('aria-selected', String(!isStyles));
+      }
+      if (domStylesPanelEl) { domStylesPanelEl.hidden = !isStyles; }
+      if (domAttrsPanelEl)  { domAttrsPanelEl.hidden  = isStyles;  }
+    }
+    if (domDtabStylesEl) { domDtabStylesEl.addEventListener('click', function () { switchDetailTab('styles'); }); }
+    if (domDtabAttrsEl)  { domDtabAttrsEl.addEventListener('click',  function () { switchDetailTab('attrs');  }); }
+
+    // Styles property filter
+    if (domStylesFilterEl) {
+      domStylesFilterEl.addEventListener('input', function () {
+        domStylesFilterQuery = domStylesFilterEl.value.trim();
+        domFilterStyles();
+      });
+      domStylesFilterEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { domStylesFilterEl.value = ''; domStylesFilterQuery = ''; domFilterStyles(); }
       });
     }
   }
@@ -1230,6 +1554,8 @@
         touchHandleEvent(msg);
       } else if (msg.type === 'dom') {
         domHandleSnapshot(msg.html);
+      } else if (msg.type === 'styles') {
+        domHandleStyles(msg);
       }
     };
 
