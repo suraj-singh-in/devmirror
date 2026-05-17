@@ -1,7 +1,7 @@
 {
   "name": "devmirror",
-  "version": "0.1.0",
-  "description": "Expose your local dev server to a real phone over WiFi, with zero config and a live DevTools panel.",
+  "version": "0.2.0",
+  "description": "Test your web app on a real phone — instantly, over WiFi, with zero config.",
   "type": "module",
   "bin": {
     "devmirror": "./bin/cli.js"
@@ -10,8 +10,47 @@
     ".": "./bin/cli.js",
     "./vite": "./src/plugins/vite.js"
   },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "start": "node bin/cli.js"
+  },
+  "keywords": [
+    "devtools",
+    "mobile",
+    "debugging",
+    "real-device",
+    "testing",
+    "proxy",
+    "wifi",
+    "phone",
+    "developer-tools",
+    "vite",
+    "vite-plugin",
+    "localhost",
+    "qr-code",
+    "console",
+    "dom-inspector",
+    "remote-debugging",
+    "heatmap",
+    "touch"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/suraj-singh-in/devmirror"
+  },
+  "homepage": "https://github.com/suraj-singh-in/devmirror#readme",
+  "bugs": {
+    "url": "https://github.com/suraj-singh-in/devmirror/issues"
+  },
+  "author": "Suraj Singh <suraj.singh.in.delhi@gmail.com>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "cheerio": "^1.0.0",
@@ -20,9 +59,5 @@
     "picocolors": "^1.0.0",
     "qrcode-terminal": "^0.12.0",
     "ws": "^8.0.0"
-  },
-  "engines": {
-    "node": ">=18"
-  },
-  "license": "MIT"
+  }
 }
