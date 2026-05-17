@@ -1,10 +1,10 @@
 {
   "name": "devmirror",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Test your web app on a real phone — instantly, over WiFi, with zero config.",
   "type": "module",
   "bin": {
-    "devmirror": "./bin/cli.js"
+    "devmirror": "bin/cli.js"
   },
   "exports": {
     ".": "./bin/cli.js",
@@ -41,7 +41,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/suraj-singh-in/devmirror"
+    "url": "git+https://github.com/suraj-singh-in/devmirror.git"
   },
   "homepage": "https://github.com/suraj-singh-in/devmirror#readme",
   "bugs": {
