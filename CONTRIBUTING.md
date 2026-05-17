@@ -1,4 +1,4 @@
-﻿# Contributing to devmirror
+# Contributing to dev-mirror
 
 Thanks for your interest in contributing. This document covers how to get set up, how to test, and what to expect from the review process.
 
@@ -10,7 +10,7 @@ Thanks for your interest in contributing. This document covers how to get set up
 
 ```sh
 git clone https://github.com/samosa-code/dev-mirror.git
-cd devmirror
+cd dev-mirror
 npm install
 ```
 
@@ -20,7 +20,7 @@ There is no build step. Source runs directly with `node`.
 
 ## Running locally
 
-You need two things running: a dev server to proxy, and devmirror itself.
+You need two things running: a dev server to proxy, and dev-mirror itself.
 
 **1. Start any dev server on a port:**
 
@@ -32,7 +32,7 @@ npx serve . -p 3000
 npm run dev   # Vite, Next.js, CRA, etc.
 ```
 
-**2. Run devmirror against it:**
+**2. Run dev-mirror against it:**
 
 ```sh
 node bin/cli.js -p 3000
@@ -42,7 +42,7 @@ The terminal prints:
 - A **Phone URL** to open on your phone (`http://192.168.x.x:9001`)
 - A **DevTools URL** that auto-opens in your laptop browser (`http://localhost:9001/__devtools`)
 
-Both must be reachable â€” your phone and laptop need to be on the same WiFi network.
+Both must be reachable -- your phone and laptop need to be on the same WiFi network.
 
 ---
 
@@ -71,16 +71,15 @@ These appear instantly in the DevTools panel's Console tab.
 **3. Simulating touch events** (the Touch tab):
 
 ```js
-// Dispatch synthetic touch events
 var el = document.body;
 var touch = new Touch({ identifier: 1, target: el, clientX: 150, clientY: 300 });
 var event = new TouchEvent('touchstart', { touches: [touch], changedTouches: [touch], bubbles: true });
 el.dispatchEvent(event);
 ```
 
-**4. DOM inspection** â€” click "Snapshot DOM" in the DOM tab while the phone tab is open. It captures the DOM of whatever page the phone tab is showing.
+**4. DOM inspection** -- click "Snapshot DOM" in the DOM tab while the phone tab is open. It captures the DOM of whatever page the phone tab is showing.
 
-> Note: `screen.width` / `screen.height` in a desktop browser tab will report laptop dimensions rather than phone dimensions, so the Device tab will show laptop values in this mode. That's expected â€” it is a simulation.
+> Note: `screen.width` / `screen.height` in a desktop browser tab will report laptop dimensions rather than phone dimensions, so the Device tab will show laptop values in this mode. That is expected -- it is a simulation.
 
 ---
 
@@ -88,7 +87,7 @@ el.dispatchEvent(event);
 
 ```
 bin/
-  cli.js                  Entry point â€” argument parsing, startup orchestration
+  cli.js                  Entry point -- argument parsing, startup orchestration
 src/
   server/
     proxy.js              HTTP proxy server + DevTools page assembly
@@ -106,21 +105,21 @@ src/
       touch/
       dom/
   plugins/
-    vite.js               Vite plugin (importable as devmirror/vite)
-docs/                     Design documents â€” PRD, ROADMAP, TECHNICAL, DESIGN
+    vite.js               Vite plugin (importable as @samosa-code/dev-mirror/vite)
+docs/                     Design documents -- PRD, ROADMAP, TECHNICAL, DESIGN
 ```
 
 ---
 
 ## Code style
 
-- **No TypeScript** â€” plain JavaScript throughout. JSDoc for function signatures where useful.
-- **No framework** â€” vanilla JS in the DevTools panel and bridge script. No React, no Vue, no bundler.
-- **No comments explaining what the code does** â€” name things well instead. Comments are for *why*: hidden constraints, workarounds, non-obvious invariants.
-- **No error handling for things that cannot fail** â€” trust internal code and Node.js guarantees. Validate only at system boundaries (CLI args, incoming WebSocket messages, external file reads).
-- **No premature abstractions** â€” three similar lines of code is better than a helper function that only saves three lines.
-- **ES modules throughout** â€” `"type": "module"` is set in `package.json`. Use `import`/`export`.
-- **Bridge script exception** â€” `src/client/bridge.js` must remain ES5-compatible (no arrow functions, no `const`/`let` at the top-level IIFE scope) so it runs on older phone browsers without transpilation.
+- **No TypeScript** -- plain JavaScript throughout. JSDoc for function signatures where useful.
+- **No framework** -- vanilla JS in the DevTools panel and bridge script. No React, no Vue, no bundler.
+- **No comments explaining what the code does** -- name things well instead. Comments are for *why*: hidden constraints, workarounds, non-obvious invariants.
+- **No error handling for things that cannot fail** -- trust internal code and Node.js guarantees. Validate only at system boundaries (CLI args, incoming WebSocket messages, external file reads).
+- **No premature abstractions** -- three similar lines of code is better than a helper function that only saves three lines.
+- **ES modules throughout** -- `"type": "module"` is set in `package.json`. Use `import`/`export`.
+- **Bridge script exception** -- `src/client/bridge.js` must remain ES5-compatible (no arrow functions, no `const`/`let` at the top-level IIFE scope) so it runs on older phone browsers without transpilation.
 
 ---
 
@@ -140,11 +139,11 @@ Before opening a PR, run through the sections relevant to your change:
 
 ## Opening a pull request
 
-1. **Fork** the repo and create a branch from `master`.
-2. **Make your changes** â€” keep each PR focused on one thing.
+1. **Fork** the repo and create a branch from `main`.
+2. **Make your changes** -- keep each PR focused on one thing.
 3. **Run through the relevant TESTING.md checks** before submitting.
 4. **Write a clear PR description**: what changed, why, and how to test it.
-5. **Open the PR** against `master`.
+5. **Open the PR** against `main`.
 
 For significant features or design changes, open an issue first to discuss the approach. This avoids wasted effort on work that might not fit the project's direction.
 
@@ -152,7 +151,7 @@ For significant features or design changes, open an issue first to discuss the a
 
 ## What to work on
 
-Check the [ROADMAP.md](./docs/ROADMAP.md) for what is planned. Items in the **backlog / future** section are fair game â€” open an issue to claim one before starting so work isn't duplicated.
+Check the [ROADMAP.md](./docs/ROADMAP.md) for what is planned. Items in the **backlog / future** section are fair game -- open an issue to claim one before starting so work is not duplicated.
 
 The highest-value unbuilt features right now:
 - `--tunnel` flag (ngrok integration for cross-network use)
@@ -164,4 +163,3 @@ The highest-value unbuilt features right now:
 ## Questions
 
 Open a GitHub issue with the `question` label.
-
