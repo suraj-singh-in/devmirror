@@ -1,10 +1,10 @@
 {
-  "name": "devmirror",
+  "name": "dev-mirror",
   "version": "1.0.0",
   "description": "Test your web app on a real phone — instantly, over WiFi, with zero config.",
   "type": "module",
   "bin": {
-    "devmirror": "bin/cli.js"
+    "dev-mirror": "bin/cli.js"
   },
   "exports": {
     ".": "./bin/cli.js",
