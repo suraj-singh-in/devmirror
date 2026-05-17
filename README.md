@@ -122,14 +122,14 @@ If you use Vite, skip the separate terminal entirely.
 **Install:**
 
 ```sh
-npm install --save-dev dev-mirror
+npm install --save-dev @samosa-code/dev-mirror
 ```
 
 **`vite.config.js`:**
 
 ```js
 import { defineConfig } from 'vite';
-import devmirror from 'dev-mirror/vite';
+import devmirror from '@samosa-code/dev-mirror/vite';
 
 export default defineConfig({
   plugins: [devmirror()],
@@ -220,3 +220,4 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md).
 ## License
 
 MIT Â© Suraj Singh
+

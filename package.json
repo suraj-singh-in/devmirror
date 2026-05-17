@@ -1,5 +1,5 @@
 {
-  "name": "dev-mirror",
+  "name": "@samosa-code/dev-mirror",
   "version": "1.0.0",
   "description": "Test your web app on a real phone — instantly, over WiFi, with zero config.",
   "type": "module",
@@ -41,11 +41,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/suraj-singh-in/devmirror.git"
+    "url": "git+https://github.com/samosa-code/dev-mirror.git"
   },
-  "homepage": "https://github.com/suraj-singh-in/devmirror#readme",
+  "homepage": "https://github.com/samosa-code/dev-mirror#readme",
   "bugs": {
-    "url": "https://github.com/suraj-singh-in/devmirror/issues"
+    "url": "https://github.com/samosa-code/dev-mirror/issues"
   },
   "author": "Suraj Singh <suraj.singh.in.delhi@gmail.com>",
   "license": "MIT",
