@@ -1,5 +1,59 @@
+<!-- Waiting empty state — controlled by updateEmptyState -->
 <div class="empty-state" id="empty-dom">
   <i class="ti ti-device-mobile-off" aria-hidden="true"></i>
   <div class="empty-heading">Waiting for phone</div>
   <div class="empty-body">Scan the QR code in your terminal to connect</div>
+</div>
+
+<!-- DOM content: toolbar + two-pane (shown when connected, §8.5) -->
+<div class="dom-content" id="dom-content" hidden>
+
+  <!-- Toolbar (h:36px) -->
+  <div class="dom-toolbar">
+    <button class="border-btn" id="dom-snapshot-btn">
+      <i class="ti ti-code-dots" aria-hidden="true"></i>
+      Snapshot DOM
+    </button>
+    <button class="border-btn" id="dom-highlight-btn" hidden
+            aria-label="Highlight selected element on phone">
+      <i class="ti ti-focus-2" aria-hidden="true"></i>
+      Highlight on phone
+    </button>
+  </div>
+
+  <!-- Two-pane layout (§3.2) -->
+  <div class="dom-pane">
+
+    <!-- Sidebar: 280px fixed -->
+    <aside class="dom-sidebar">
+      <!-- No snapshot state (default when connected) -->
+      <div class="empty-state dom-sidebar-empty" id="dom-sidebar-empty">
+        <i class="ti ti-code" aria-hidden="true"></i>
+        <div class="empty-heading">No DOM snapshot</div>
+        <div class="empty-body">Click &lsquo;Snapshot DOM&rsquo; to capture the current page</div>
+      </div>
+      <!-- Loading state (while waiting for phone response) -->
+      <div class="empty-state dom-sidebar-empty" id="dom-loading" hidden>
+        <i class="ti ti-loader dom-spin" aria-hidden="true"></i>
+        <div class="empty-heading">Fetching snapshot&hellip;</div>
+        <div class="empty-body">Waiting for the phone to respond</div>
+      </div>
+      <!-- Element tree (shown after snapshot arrives) -->
+      <div class="dom-tree" id="dom-tree" role="tree" aria-label="DOM element tree" hidden></div>
+    </aside>
+
+    <!-- Detail pane -->
+    <div class="dom-detail">
+      <div class="empty-state dom-detail-empty" id="dom-detail-empty">
+        <i class="ti ti-cursor-text" aria-hidden="true"></i>
+        <div class="empty-heading">Select an element</div>
+        <div class="empty-body">Click a node in the tree to see its details</div>
+      </div>
+      <div class="dom-detail-view" id="dom-detail-view" hidden>
+        <div class="dom-detail-header" id="dom-detail-header"></div>
+        <div class="dom-detail-body" id="dom-detail-body"></div>
+      </div>
+    </div>
+
+  </div>
 </div>

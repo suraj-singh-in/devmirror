@@ -152,9 +152,10 @@
   });
 
   // ── State ─────────────────────────────────────────────────────────────────
-  var connState  = 'waiting'; // 'waiting' | 'connected' | 'disconnected'
-  var lastDevice = null;      // last dimensions/phone_connected payload
-  var activeTab  = 'device';
+  var connState            = 'waiting'; // 'waiting' | 'connected' | 'disconnected'
+  var lastDevice           = null;      // last dimensions/phone_connected payload
+  var activeTab            = 'device';
+  var pendingPhoneAnnounce = false;     // true after phone_connected, until dims arrive
 
   // Empty state content per tab per connection state (§10.2)
   var EMPTY_CFG = {
@@ -172,7 +173,7 @@
     },
     dom: {
       waiting:   ['ti-device-mobile-off', 'Waiting for phone',  'Scan the QR code in your terminal to connect'],
-      connected: ['ti-code',              'No DOM snapshot',      'Click \u2018Snapshot DOM\u2019 to capture the current page'],
+      connected: null, // dom-content manages its own sidebar empty states internally
     },
     camera: {
       waiting:   ['ti-device-mobile-off', 'Waiting for phone',  'Scan the QR code in your terminal to connect'],
@@ -287,6 +288,23 @@
   var touchContentEl  = null;
   var touchRafId      = null;
   var touchUIReady    = false;
+
+  // ── DOM tab state ─────────────────────────────────────────────────────────
+  var domUIReady        = false;
+  var domSnapshot       = null;      // Document parsed from phone's outerHTML
+  var domSelectedNode   = null;      // currently selected Element in the snapshot
+  var domExpandedNodes  = null;      // WeakSet — which nodes are expanded in the tree
+  var domLoadingTimer   = null;      // 10-second snapshot timeout handle
+  var domContentEl      = null;
+  var domSidebarEmptyEl = null;
+  var domLoadingEl      = null;
+  var domTreeEl         = null;
+  var domDetailEmptyEl  = null;
+  var domDetailViewEl   = null;
+  var domDetailHeaderEl = null;
+  var domDetailBodyEl   = null;
+  var domSnapshotBtnEl  = null;
+  var domHighlightBtnEl = null;
 
   // ── Console helpers ───────────────────────────────────────────────────────
 
@@ -761,6 +779,267 @@
     touchResize();
   }
 
+  // ── DOM tab helpers ───────────────────────────────────────────────────────
+
+  // Recursively mark nodes at depth 0 and 1 as expanded by default (§8.5).
+  // html (0) and head/body (1) are expanded; their children at depth 2 are visible
+  // but collapsed, so only three levels are shown before the user interacts.
+  function domSetDefaultExpanded(el, depth) {
+    if (depth < 2) {
+      domExpandedNodes.add(el);
+      var child = el.firstElementChild;
+      while (child) { domSetDefaultExpanded(child, depth + 1); child = child.nextElementSibling; }
+    }
+  }
+
+  // Build a simple CSS selector for the selected node so the phone can highlight it.
+  function domGenerateSelector(el) {
+    if (el.id) { return '#' + el.id; }
+    var tag = el.tagName.toLowerCase();
+    var classes = el.className && typeof el.className === 'string'
+      ? el.className.trim().split(/\s+/).filter(Boolean)
+      : [];
+    if (classes.length) { return tag + '.' + classes[0]; }
+    var n = 1;
+    var sib = el.previousElementSibling;
+    while (sib) { n++; sib = sib.previousElementSibling; }
+    return tag + ':nth-child(' + n + ')';
+  }
+
+  // Recursively render one element node and its visible children into container.
+  function domRenderSubtree(container, el, depth) {
+    var childEls = [];
+    var child = el.firstElementChild;
+    while (child) { childEls.push(child); child = child.nextElementSibling; }
+
+    var hasChildren = childEls.length > 0;
+    var isExpanded  = domExpandedNodes.has(el);
+
+    var row = document.createElement('div');
+    row.className = 'dom-node';
+    row.setAttribute('role', 'treeitem');
+    row.setAttribute('aria-selected', el === domSelectedNode ? 'true' : 'false');
+    if (hasChildren) { row.setAttribute('aria-expanded', isExpanded ? 'true' : 'false'); }
+    row.tabIndex = 0;
+    row.style.paddingLeft = (12 + depth * 16) + 'px';
+
+    var toggle = document.createElement('span');
+    toggle.className = 'dom-node-toggle';
+    toggle.setAttribute('aria-hidden', 'true');
+    toggle.textContent = hasChildren ? (isExpanded ? '▼' : '▶') : '';
+    row.appendChild(toggle);
+
+    var tagEl = document.createElement('span');
+    tagEl.className = 'dom-node-tag';
+    tagEl.textContent = el.tagName.toLowerCase();
+    row.appendChild(tagEl);
+
+    var hint = '';
+    if (el.id) { hint = '#' + el.id; }
+    if (el.className && typeof el.className === 'string') {
+      var firstClass = el.className.trim().split(/\s+/).filter(Boolean)[0];
+      if (firstClass) { hint += '.' + firstClass; }
+    }
+    if (hint) {
+      var hintEl = document.createElement('span');
+      hintEl.className = 'dom-node-hint';
+      hintEl.textContent = hint;
+      row.appendChild(hintEl);
+    }
+
+    // Capture el and hasChildren via closure (each call has its own scope).
+    row.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (hasChildren) {
+        if (domExpandedNodes.has(el)) { domExpandedNodes.delete(el); }
+        else { domExpandedNodes.add(el); }
+      }
+      domSelectedNode = el;
+      domRenderTree();
+      domPopulateDetail(el);
+      if (domHighlightBtnEl) { domHighlightBtnEl.removeAttribute('hidden'); }
+    });
+
+    container.appendChild(row);
+
+    if (isExpanded) {
+      childEls.forEach(function (childEl) { domRenderSubtree(container, childEl, depth + 1); });
+    }
+  }
+
+  // Re-render the full tree in-place, preserving scroll position.
+  function domRenderTree() {
+    if (!domTreeEl || !domSnapshot) { return; }
+    var scrollTop = domTreeEl.scrollTop;
+    domTreeEl.innerHTML = '';
+    domRenderSubtree(domTreeEl, domSnapshot.documentElement, 0);
+    domTreeEl.scrollTop = scrollTop;
+  }
+
+  // Populate the detail pane with tag, attributes, and dimensions.
+  function domPopulateDetail(el) {
+    if (!domDetailEmptyEl || !domDetailViewEl || !domDetailHeaderEl || !domDetailBodyEl) { return; }
+    domDetailEmptyEl.setAttribute('hidden', '');
+    domDetailViewEl.removeAttribute('hidden');
+
+    // Header — tag and class/id string
+    domDetailHeaderEl.innerHTML = '';
+    var tagDiv = document.createElement('div');
+    tagDiv.className = 'dom-detail-tag';
+    tagDiv.textContent = '<' + el.tagName.toLowerCase() + '>';
+    domDetailHeaderEl.appendChild(tagDiv);
+
+    var classDisplay = '';
+    if (el.className && typeof el.className === 'string' && el.className.trim()) {
+      classDisplay = '.' + el.className.trim().split(/\s+/).join('.');
+    }
+    if (el.id) { classDisplay += (classDisplay ? ' ' : '') + '#' + el.id; }
+    if (classDisplay) {
+      var classDiv = document.createElement('div');
+      classDiv.className = 'dom-detail-classes';
+      classDiv.textContent = classDisplay;
+      domDetailHeaderEl.appendChild(classDiv);
+    }
+
+    // Body — sections
+    domDetailBodyEl.innerHTML = '';
+
+    // ATTRIBUTES section
+    var attrs = el.attributes;
+    if (attrs && attrs.length > 0) {
+      var aSection = document.createElement('div');
+      aSection.className = 'dom-section';
+      var aLabel = document.createElement('div');
+      aLabel.className = 'dom-section-label';
+      aLabel.textContent = 'Attributes';
+      var aBlock = document.createElement('div');
+      aBlock.className = 'dom-attr-block';
+      var aTable = document.createElement('table');
+      aTable.className = 'dom-attr-table';
+      var aTbody = document.createElement('tbody');
+      for (var i = 0; i < attrs.length; i++) {
+        var tr = document.createElement('tr');
+        var tdN = document.createElement('td');
+        tdN.textContent = attrs[i].name;
+        var tdV = document.createElement('td');
+        tdV.textContent = '"' + attrs[i].value + '"';
+        tr.appendChild(tdN);
+        tr.appendChild(tdV);
+        aTbody.appendChild(tr);
+      }
+      aTable.appendChild(aTbody);
+      aBlock.appendChild(aTable);
+      aSection.appendChild(aLabel);
+      aSection.appendChild(aBlock);
+      domDetailBodyEl.appendChild(aSection);
+    }
+
+    // DIMENSIONS section — inline styles only in v0.3 (no getBoundingClientRect)
+    function getDim(prop) {
+      var s = el.style && el.style[prop];
+      if (s) { return s; }
+      if ((prop === 'width' || prop === 'height') && el.getAttribute(prop)) {
+        return el.getAttribute(prop) + 'px';
+      }
+      return '—';
+    }
+    var dSection = document.createElement('div');
+    dSection.className = 'dom-section';
+    var dLabel = document.createElement('div');
+    dLabel.className = 'dom-section-label';
+    dLabel.textContent = 'Dimensions';
+    var dBlock = document.createElement('div');
+    dBlock.className = 'dom-attr-block';
+    var dTable = document.createElement('table');
+    dTable.className = 'dom-attr-table';
+    var dTbody = document.createElement('tbody');
+    [['width', 'height'], ['top', 'left']].forEach(function (pair) {
+      var tr = document.createElement('tr');
+      pair.forEach(function (dim, j) {
+        var tdN = document.createElement('td');
+        tdN.textContent = dim;
+        var tdV = document.createElement('td');
+        tdV.className = j === 0 ? 'dom-dim-val' : '';
+        tdV.textContent = getDim(dim);
+        tr.appendChild(tdN);
+        tr.appendChild(tdV);
+      });
+      dTbody.appendChild(tr);
+    });
+    dTable.appendChild(dTbody);
+    dBlock.appendChild(dTable);
+    dSection.appendChild(dLabel);
+    dSection.appendChild(dBlock);
+    domDetailBodyEl.appendChild(dSection);
+  }
+
+  // Show loading state and arm the 10-second timeout.
+  function domShowLoading() {
+    if (domSidebarEmptyEl) { domSidebarEmptyEl.setAttribute('hidden', ''); }
+    if (domTreeEl) { domTreeEl.setAttribute('hidden', ''); }
+    if (domLoadingEl) { domLoadingEl.removeAttribute('hidden'); }
+    if (domLoadingTimer !== null) { clearTimeout(domLoadingTimer); }
+    domLoadingTimer = setTimeout(function () {
+      domLoadingTimer = null;
+      // Timeout — revert sidebar to a visible error state
+      if (domLoadingEl) { domLoadingEl.setAttribute('hidden', ''); }
+      if (domSidebarEmptyEl) {
+        domSidebarEmptyEl.querySelector('i').className = 'ti ti-alert-triangle';
+        domSidebarEmptyEl.querySelector('.empty-heading').textContent = 'Snapshot timed out';
+        domSidebarEmptyEl.querySelector('.empty-body').textContent = 'The phone did not respond. Try again.';
+        domSidebarEmptyEl.removeAttribute('hidden');
+      }
+    }, 10000);
+  }
+
+  // Handle a dom snapshot message from the phone.
+  function domHandleSnapshot(html) {
+    if (domLoadingTimer !== null) { clearTimeout(domLoadingTimer); domLoadingTimer = null; }
+    var parser = new DOMParser();
+    domSnapshot = parser.parseFromString(html, 'text/html');
+    domExpandedNodes = new WeakSet();
+    if (domSnapshot.documentElement) { domSetDefaultExpanded(domSnapshot.documentElement, 0); }
+    domSelectedNode = null;
+    if (domHighlightBtnEl) { domHighlightBtnEl.setAttribute('hidden', ''); }
+    if (domDetailEmptyEl) { domDetailEmptyEl.removeAttribute('hidden'); }
+    if (domDetailViewEl) { domDetailViewEl.setAttribute('hidden', ''); }
+    if (domLoadingEl) { domLoadingEl.setAttribute('hidden', ''); }
+    if (domSidebarEmptyEl) { domSidebarEmptyEl.setAttribute('hidden', ''); }
+    if (domTreeEl) { domTreeEl.removeAttribute('hidden'); }
+    domRenderTree();
+  }
+
+  // Initialize DOM tab UI refs and event handlers (called once on first connect).
+  function domInitUI() {
+    if (domUIReady) { return; }
+    domUIReady = true;
+    domContentEl      = document.getElementById('dom-content');
+    domSidebarEmptyEl = document.getElementById('dom-sidebar-empty');
+    domLoadingEl      = document.getElementById('dom-loading');
+    domTreeEl         = document.getElementById('dom-tree');
+    domDetailEmptyEl  = document.getElementById('dom-detail-empty');
+    domDetailViewEl   = document.getElementById('dom-detail-view');
+    domDetailHeaderEl = document.getElementById('dom-detail-header');
+    domDetailBodyEl   = document.getElementById('dom-detail-body');
+    domSnapshotBtnEl  = document.getElementById('dom-snapshot-btn');
+    domHighlightBtnEl = document.getElementById('dom-highlight-btn');
+
+    if (domSnapshotBtnEl) {
+      domSnapshotBtnEl.addEventListener('click', function () {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'request_dom' }));
+          domShowLoading();
+        }
+      });
+    }
+    if (domHighlightBtnEl) {
+      domHighlightBtnEl.addEventListener('click', function () {
+        if (!domSelectedNode || !ws || ws.readyState !== WebSocket.OPEN) { return; }
+        ws.send(JSON.stringify({ type: 'highlight', selector: domGenerateSelector(domSelectedNode) }));
+      });
+    }
+  }
+
   // ── Connection state machine ──────────────────────────────────────────────
 
   /**
@@ -835,12 +1114,30 @@
       if (touchContentEl) { touchContentEl.setAttribute('hidden', ''); }
     }
 
-    // ARIA live announcement (§13)
+    // DOM content: show on connect, keep on disconnect, hide on waiting
+    if (!domContentEl) { domContentEl = document.getElementById('dom-content'); }
     if (newState === 'connected') {
-      ariaStatus.textContent = 'Phone connected: ' + pillText;
+      if (domContentEl) { domContentEl.removeAttribute('hidden'); }
+      domInitUI();
+    } else if (newState === 'waiting') {
+      if (domContentEl) { domContentEl.setAttribute('hidden', ''); }
+      if (domLoadingTimer !== null) { clearTimeout(domLoadingTimer); domLoadingTimer = null; }
+    }
+
+    // ARIA live announcement (§13)
+    // pendingPhoneAnnounce defers 'Phone connected' until real dimensions arrive,
+    // so screen readers never hear 'Phone connected: Waiting for device…'.
+    if (newState === 'connected') {
+      if (prev !== 'connected') { pendingPhoneAnnounce = true; }
+      if (pendingPhoneAnnounce && lastDevice && lastDevice.width) {
+        ariaStatus.textContent = 'Phone connected: ' + pillText;
+        pendingPhoneAnnounce = false;
+      }
     } else if (newState === 'disconnected') {
+      pendingPhoneAnnounce = false;
       ariaStatus.textContent = 'Phone disconnected \u2014 attempting to reconnect';
     } else if (prev !== 'waiting') {
+      pendingPhoneAnnounce = false;
       ariaStatus.textContent = 'Waiting for phone';
     }
   }
@@ -927,6 +1224,8 @@
         consoleAddLog(msg);
       } else if (msg.type === 'touch') {
         touchHandleEvent(msg);
+      } else if (msg.type === 'dom') {
+        domHandleSnapshot(msg.html);
       }
     };
 

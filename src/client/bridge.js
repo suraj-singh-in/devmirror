@@ -11,6 +11,8 @@
 
   var socket = null;
   var resizeTimer = null;
+  var highlightTimer   = null; // setTimeout handle for the active highlight
+  var highlightRestore = null; // closure that removes the active highlight
 
   // Serialize a single value to a JSON-safe string for transmission.
   function serialize(value) {
@@ -116,8 +118,34 @@
 
     if (message.type === 'reload') {
       window.location.reload();
+    } else if (message.type === 'request_dom') {
+      setTimeout(function () {
+        send({ type: 'dom', html: document.documentElement.outerHTML });
+      }, 0);
+    } else if (message.type === 'highlight') {
+      var el = document.querySelector(message.selector);
+      if (!el) { return; }
+      // If a previous highlight is active, cancel it and restore that element first.
+      if (highlightTimer !== null) {
+        clearTimeout(highlightTimer);
+        highlightTimer = null;
+        if (highlightRestore) { highlightRestore(); }
+        highlightRestore = null;
+      }
+      var savedOutline = el.style.outline;
+      var savedOffset  = el.style.outlineOffset;
+      el.style.outline       = '2px solid #1D9E75';
+      el.style.outlineOffset = '2px';
+      highlightRestore = function () {
+        el.style.outline       = savedOutline;
+        el.style.outlineOffset = savedOffset;
+      };
+      highlightTimer = setTimeout(function () {
+        highlightRestore();
+        highlightTimer   = null;
+        highlightRestore = null;
+      }, 2000);
     }
-    // highlight and request_dom are handled in v0.3.
   }
 
   // Open a WebSocket connection to the bridge server.
