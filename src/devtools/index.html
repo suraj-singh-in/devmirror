@@ -58,7 +58,8 @@
       DOM
     </button>
     <button class="tab" id="tab-camera"
-            role="tab" aria-selected="false" aria-controls="panel-camera" tabindex="-1">
+            role="tab" aria-selected="false" aria-controls="panel-camera" tabindex="-1"
+            hidden>
       Camera
     </button>
   </div>
@@ -1163,6 +1164,9 @@
       consoleUnread = 0;
       consoleUpdateBadge();
     }
+    // Re-run touchResize when switching to Touch — the panel was display:none when
+    // the canvas was first sized, so offsetWidth/offsetHeight were 0 at that point.
+    if (tabId === 'touch') { touchResize(); }
   }
 
   TAB_IDS.forEach(function (id) {

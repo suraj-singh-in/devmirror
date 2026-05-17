@@ -6,6 +6,10 @@
   "bin": {
     "devmirror": "./bin/cli.js"
   },
+  "exports": {
+    ".": "./bin/cli.js",
+    "./vite": "./src/plugins/vite.js"
+  },
   "scripts": {
     "start": "node bin/cli.js"
   },
