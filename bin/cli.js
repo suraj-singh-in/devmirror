@@ -77,6 +77,8 @@ const printFatal = (message, hint) => {
  *   noQr: boolean,
  *   noOpen: boolean,
  *   host: string | null,
+ *   targetHost: string | null,
+ *   targetHttps: boolean,
  * }}
  */
 function parseArgs(argv) {
@@ -89,6 +91,8 @@ function parseArgs(argv) {
     noQr: false,
     noOpen: false,
     host: null,
+    targetHost: null,
+    targetHttps: false,
   };
 
   for (let i = 0; i < tokens.length; i++) {
@@ -108,6 +112,10 @@ function parseArgs(argv) {
       options.noOpen = true;
     } else if (token === '--host') {
       options.host = tokens[++i];
+    } else if (token === '--target-host') {
+      options.targetHost = tokens[++i];
+    } else if (token === '--target-https') {
+      options.targetHttps = true;
     }
   }
 
@@ -139,6 +147,8 @@ function exitWithUsage(reason) {
   print('  --proxy-port <port>      Proxy server port (default: 9001)');
   print('  --bridge-port <port>     WebSocket bridge port (default: 9000)');
   print('  --https                  Target dev server uses HTTPS');
+  print('  --target-host <hostname> Proxy to a custom local hostname (default: localhost)');
+  print('  --target-https           Target uses HTTPS with self-signed cert (skips cert verification)');
   print('  --no-qr                  Skip printing the QR code');
   print('  --no-open                Do not auto-open DevTools in browser');
   print('  --host <ip>              Override detected LAN IP address');
@@ -216,6 +226,19 @@ async function main() {
     );
   }
 
+  // Validate --target-host if provided.
+  if (options.targetHost !== null) {
+    const protocolMatch = options.targetHost.match(/^https?:\/\//);
+    if (protocolMatch) {
+      options.targetHost = options.targetHost.replace(/^https?:\/\//, '');
+      printWarning(`--target-host should be a hostname only, not a URL. Using: ${options.targetHost}`);
+    }
+    if (/^(192\.|10\.|172\.)/.test(options.targetHost)) {
+      printFatal('--target-host is for custom local domain names, not IP addresses. Use --host for IP overrides.');
+      process.exit(1);
+    }
+  }
+
   print(`devmirror v${version}`);
   printBlank();
 
@@ -250,22 +273,28 @@ async function main() {
     printWarning(`Port ${options.bridgePort} in use — using ${bridgePort} instead`);
   }
 
-  const protocol = options.useHttps ? 'https' : 'http';
+  const targetHost = options.targetHost ?? 'localhost';
+  const targetProtocol = (options.targetHttps || options.useHttps) ? 'https' : 'http';
   const phoneUrl = `http://${lanIp}:${proxyPort}`;
   const devtoolsUrl = `http://localhost:${proxyPort}/__devtools`;
 
-  printSuccess(`Proxying:    ${protocol}://localhost:${options.port}`);
+  if (options.targetHttps) {
+    printWarning('--target-https: TLS certificate verification is disabled for the proxy target.');
+  }
+  const certNote = options.targetHttps ? '  (cert verification off)' : '';
+  printSuccess(`Proxying:    ${targetProtocol}://${targetHost}:${options.port}${certNote}`);
   printSuccess(`Phone URL:   ${phoneUrl}`);
   printSuccess(`DevTools:    ${devtoolsUrl}`);
   printBlank();
 
-  // Start servers (stubs — real implementations replace these in later tickets).
   const proxy = await startProxy({
     targetPort: options.port,
     proxyPort,
     bridgePort,
     lanIp,
     useHttps: options.useHttps,
+    targetHost,
+    targetHttps: options.targetHttps,
   });
   const bridge = await startBridge({ bridgePort });
 

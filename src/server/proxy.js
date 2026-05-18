@@ -171,27 +171,28 @@ async function serveDevtoolsPanel(bridgePort, res) {
  * @param {boolean} options.useHttps - Whether the dev server uses HTTPS.
  * @returns {void}
  */
-function forwardRequest(req, res, { targetPort, useHttps }) {
-  const protocol = useHttps ? 'https' : 'http';
+function forwardRequest(req, res, { targetPort, useHttps, targetHost, targetHttps }) {
+  const targetProtocol = (targetHttps || useHttps) ? 'https' : 'http';
 
   const forwardHeaders = {
     ...req.headers,
-    origin: `${protocol}://localhost:${targetPort}`,
-    host: `localhost:${targetPort}`,
+    origin: `${targetProtocol}://${targetHost}:${targetPort}`,
+    host: `${targetHost}:${targetPort}`,
     // Disable compression so we can safely inspect and inject into the response body.
     'accept-encoding': 'identity',
   };
 
   const requestOptions = {
-    hostname: 'localhost',
+    hostname: targetHost,
     port: targetPort,
     path: req.url,
     method: req.method,
     headers: forwardHeaders,
+    ...(targetHttps ? { rejectUnauthorized: false } : {}),
   };
 
   // Use the correct request function for the target protocol.
-  const requestFn = useHttps ? https.request : http.request;
+  const requestFn = (targetHttps || useHttps) ? https.request : http.request;
 
   const targetReq = requestFn(requestOptions, (targetRes) => {
     if (isHtmlResponse(targetRes)) {
@@ -204,9 +205,9 @@ function forwardRequest(req, res, { targetPort, useHttps }) {
   });
 
   targetReq.on('error', (error) => {
-    if (error.code === 'ECONNREFUSED') {
-      console.log(`[proxy] Dev server not reachable on port ${targetPort}.`);
-      sendDevServerErrorPage(res, targetPort);
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      console.log(`[proxy] Dev server not reachable at ${targetHost}:${targetPort}.`);
+      sendDevServerErrorPage(res, targetHost, targetPort);
     } else {
       console.log(`[proxy] Request error for ${req.url}: ${error.message}`);
       res.writeHead(502, { 'Content-Type': 'text/plain' });
@@ -266,12 +267,21 @@ function bufferAndInject(targetRes, res) {
  * @param {number} targetPort - The port devmirror was trying to connect to.
  * @returns {void}
  */
-function sendDevServerErrorPage(res, targetPort) {
+function sendDevServerErrorPage(res, targetHost, targetPort) {
+  const isCustomHost = targetHost !== 'localhost';
+  const errorLines = isCustomHost
+    ? [
+        `<p>devmirror: Could not connect to ${targetHost}:${targetPort}.</p>`,
+        '<p>Is your dev server running and does this hostname resolve on your machine?</p>',
+        '<p>Check your /etc/hosts file.</p>',
+      ]
+    : [`<p>devmirror: Could not connect to localhost:${targetPort}. Is your dev server running?</p>`];
+
   const body = [
     '<!DOCTYPE html>',
     '<html><head><title>devmirror — dev server unreachable</title></head>',
     '<body style="font-family: monospace; padding: 2rem;">',
-    `<p>devmirror: Could not connect to localhost:${targetPort}. Is your dev server running?</p>`,
+    ...errorLines,
     '</body></html>',
   ].join('\n');
 
@@ -298,11 +308,13 @@ function sendDevServerErrorPage(res, targetPort) {
  * @param {boolean} options.useHttps - Whether the target dev server uses HTTPS.
  * @returns {Promise<{ server: import('node:http').Server, close: () => Promise<void> }>}
  */
-export function startProxy({ targetPort, proxyPort, lanIp, bridgePort, useHttps }) {
+export function startProxy({ targetPort, proxyPort, lanIp, bridgePort, useHttps, targetHost = 'localhost', targetHttps = false }) {
   return new Promise((resolve, reject) => {
     // A minimal http-proxy instance — used only for WebSocket upgrade proxying.
     // HTTP requests are handled directly to allow response body interception.
-    const wsProxy = httpProxy.createProxyServer({});
+    const wsProxy = httpProxy.createProxyServer({
+      secure: !targetHttps,
+    });
 
     wsProxy.on('error', (error, _req, socket) => {
       console.log(`[proxy] WebSocket proxy error: ${error.message}`);
@@ -322,14 +334,14 @@ export function startProxy({ targetPort, proxyPort, lanIp, bridgePort, useHttps 
         return;
       }
 
-      forwardRequest(req, res, { targetPort, useHttps });
+      forwardRequest(req, res, { targetPort, useHttps, targetHost, targetHttps });
     });
 
     // Forward all WebSocket upgrade requests straight to the dev server.
     // The bridge runs on its own separate port — these upgrades are HMR only.
     server.on('upgrade', (req, socket, head) => {
-      const wsProtocol = useHttps ? 'wss' : 'ws';
-      const target = `${wsProtocol}://localhost:${targetPort}`;
+      const wsProtocol = (targetHttps || useHttps) ? 'wss' : 'ws';
+      const target = `${wsProtocol}://${targetHost}:${targetPort}`;
 
       wsProxy.ws(req, socket, head, { target }, (error) => {
         console.log(`[proxy] WebSocket upgrade failed for ${req.url}: ${error.message}`);

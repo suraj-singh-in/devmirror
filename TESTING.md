@@ -144,6 +144,92 @@ significant change to `src/devtools/` or `src/server/`.
 
 ---
 
+## 8. --target-host / --target-https flags
+
+### 8a. Default behaviour unchanged
+
+Run without any new flags:
+```
+node bin/cli.js -p 3000
+```
+Confirm startup shows `Proxying: http://localhost:3000`. App loads on phone. No regression.
+
+### 8b. Custom HTTP host
+
+Add `127.0.0.1 devmirror-test.local` to your hosts file (`C:\Windows\System32\drivers\etc\hosts` on Windows, `/etc/hosts` on Mac/Linux).
+
+Run:
+```
+node bin/cli.js -p 5173 --target-host devmirror-test.local
+```
+
+| Check | Expected |
+|-------|----------|
+| Startup line | `Proxying: http://devmirror-test.local:5173` |
+| App loads on phone | Yes — via QR code |
+| No CORS errors | Confirm with a fetch/XHR from the app |
+
+### 8c. Custom HTTPS host with self-signed cert
+
+Run your dev server with HTTPS on `devmirror-test.local:5173`, then:
+```
+node bin/cli.js -p 5173 --target-host devmirror-test.local --target-https
+```
+
+| Check | Expected |
+|-------|----------|
+| Warning line | `! --target-https: TLS certificate verification is disabled for the proxy target.` |
+| Startup line | `Proxying: https://devmirror-test.local:5173  (cert verification off)` |
+| No TLS errors | App loads on phone without certificate errors |
+| Origin header | `https://devmirror-test.local:5173` (verify via API call) |
+
+### 8d. --target-https without --target-host
+
+Run:
+```
+node bin/cli.js -p 5173 --target-https
+```
+Confirm startup shows `Proxying: https://localhost:5173  (cert verification off)`.
+Valid use case for developers running localhost HTTPS.
+
+### 8e. HMR still works with custom host
+
+With `--target-host` and `--target-https` set, edit a source file.
+Confirm the phone browser updates without a full reload.
+
+### 8f. Protocol stripping warning
+
+Run:
+```
+node bin/cli.js -p 5173 --target-host http://localdev.uat.company.com
+```
+Confirm:
+- Warning: `! --target-host should be a hostname only, not a URL. Using: localdev.uat.company.com`
+- Protocol is stripped and proxy targets `localdev.uat.company.com:5173`.
+
+### 8g. IP address rejection
+
+Run:
+```
+node bin/cli.js -p 5173 --target-host 192.168.1.5
+```
+Confirm:
+- Error: `✗ --target-host is for custom local domain names, not IP addresses. Use --host for IP overrides.`
+- Process exits with code 1.
+
+---
+
+## Known limitations
+
+### --target-host: client-side hostname guards
+
+If your app redirects based on hostname (e.g. checks `window.location.hostname`
+and redirects to the canonical domain), the phone will be redirected to a URL
+it cannot resolve. Disable that guard in your local dev config when testing
+with devmirror.
+
+---
+
 ## Definition of done
 
 All rows in all tables above pass without console errors in the DevTools browser
