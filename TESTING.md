@@ -230,6 +230,118 @@ with devmirror.
 
 ---
 
+## 9. Network tab
+
+### 9a. GET request appears instantly
+
+1. Connect the phone. Open the proxied app — it makes a fetch call on load.
+2. Switch to the **Network** tab.
+
+| Check | Expected |
+|-------|----------|
+| Row appears | Green dot, GET badge, path (e.g. `/api/user`), duration in ms, size in kB |
+| Click the row | Detail pane shows full URL, status chip, duration, size, content-type chips |
+| Request Headers sub-tab | Shows headers sent with the request |
+| Response Headers sub-tab | Shows headers returned by the server |
+| Response sub-tab | Shows response body (prettified JSON if `application/json`) |
+
+### 9b. POST request — Payload sub-tab
+
+1. Trigger a form submission or login from the phone.
+2. Click the POST row in the Network tab.
+
+| Check | Expected |
+|-------|----------|
+| Payload sub-tab visible | Tab appears (hidden for GET/DELETE without body) |
+| Payload content | Request body shown (JSON prettified, form-data as key/value table) |
+
+### 9c. Error request (4xx / 5xx)
+
+1. From the phone, call a non-existent API endpoint.
+
+| Check | Expected |
+|-------|----------|
+| Row dot colour | Red |
+| Errors filter pill | Shows only this row when active |
+| Status chip in detail | Red colour, e.g. `✗ 404 Not Found` |
+
+### 9d. Pending request indicator
+
+1. From the phone, trigger a slow request (or throttle the dev server).
+
+| Check | Expected |
+|-------|----------|
+| While in-flight | Amber dot, size column reads "pending" in amber |
+| After completion | Dot updates to green/red, size and duration populate |
+
+### 9e. Filter pills
+
+Load a page that fetches JS, CSS, and JSON API data from the phone.
+
+| Pill | Expected rows |
+|------|---------------|
+| All | All requests |
+| Fetch | Only fetch/JSON requests |
+| XHR | Only XHR requests |
+| JS | Only `.js` file requests |
+| CSS | Only `.css` file requests |
+| Errors | Only 4xx/5xx or network-error requests |
+
+### 9f. URL search
+
+1. Type `/api` in the sidebar search box.
+2. Confirm only rows whose URL contains `/api` are shown.
+3. Clear the search — all requests (within active filter) return.
+
+### 9g. Detail search — Request Headers
+
+1. Select any request. Click **Request Headers** sub-tab.
+2. Type `content` in the detail search box.
+3. Confirm only header rows whose key or value contains "content" are shown.
+4. Confirm the matched text is highlighted in amber.
+5. Result count shows `N of M results`.
+6. Click × — search clears, all rows return.
+
+### 9h. Detail search — Response body
+
+1. Select a JSON API request. Click **Response** sub-tab.
+2. Type a key from the JSON (e.g. `email`).
+3. Confirm only matching lines are shown and highlighted.
+
+### 9i. Image preview
+
+1. Load a page that fetches an image.
+2. Click the image request row. Click **Preview**.
+3. Confirm the "Image response — Preview not available" empty state appears.
+4. Confirm search bar is hidden on the Preview tab for images.
+
+### 9j. Timing sub-tab
+
+1. Select any completed request. Click **Timing**.
+2. If `PerformanceResourceTiming` data is available: confirm DNS, Connecting, SSL/TLS, Waiting (TTFB), and Receiving rows with coloured bars and ms values. TOTAL section shows overall duration.
+3. If data is unavailable (e.g. cross-origin): confirm "Timing data not available" empty state.
+4. Confirm the search bar is hidden on the Timing tab.
+
+### 9k. Preserve requests toggle
+
+1. Leave toggle **off** (default).
+2. Reload the phone tab — the request list clears.
+3. Enable **Preserve requests** toggle (turns green).
+4. Reload the phone tab — the request list is **not** cleared; new requests are appended.
+
+### 9l. Clear button
+
+1. With some requests in the list, click the trash icon.
+2. The request list empties and the detail pane returns to "Select a request" state.
+
+### 9m. Tab badge
+
+1. While on the **Device** tab, trigger several requests on the phone.
+2. The **Network** tab label gains a green badge showing the unread count.
+3. Click the Network tab — badge disappears.
+
+---
+
 ## Definition of done
 
 All rows in all tables above pass without console errors in the DevTools browser

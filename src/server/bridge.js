@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { isEntryPoint, test } from '../utils.js';
 
 // Message types that flow from the phone → bridge → DevTools panel.
-const PHONE_TO_DEVTOOLS_TYPES = new Set(['dimensions', 'console', 'touch', 'dom', 'styles']);
+const PHONE_TO_DEVTOOLS_TYPES = new Set(['dimensions', 'console', 'touch', 'dom', 'styles', 'network_request_start', 'network_request_done', 'network_request_error']);
 
 // Message types that flow from DevTools → bridge → phone.
 const DEVTOOLS_TO_PHONE_TYPES = new Set(['request_dom', 'highlight', 'reload', 'request_styles']);

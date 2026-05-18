@@ -17,7 +17,7 @@ const BRIDGE_SCRIPT_PATH = path.resolve(__dirname, '../client/bridge.js');
 const DEVTOOLS_DIR       = path.resolve(__dirname, '../devtools');
 
 // Tab names in order — used during DevTools panel assembly.
-const DEVTOOLS_TABS = ['device', 'console', 'touch', 'dom', 'camera'];
+const DEVTOOLS_TABS = ['device', 'console', 'touch', 'network', 'dom', 'camera'];
 
 // ---------------------------------------------------------------------------
 // Response helpers
