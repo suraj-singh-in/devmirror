@@ -342,6 +342,78 @@ Load a page that fetches JS, CSS, and JSON API data from the phone.
 
 ---
 
+---
+
+## 10. --target-host DNS server
+
+### 10a. No admin — graceful skip
+
+Run **without** elevation:
+```
+node bin/cli.js -p 5173 --target-host localdev.uat.fynd.com
+```
+
+| Check | Expected |
+|-------|----------|
+| Warning line | `! DNS server could not start (run as Administrator to enable cookie-domain support).` |
+| Phone URL | IP-based (`http://192.168.x.x:9001`) — unchanged |
+| No Custom URL line | Correct — DNS is not active |
+| Everything else | Works normally — no regression |
+
+### 10b. With admin — DNS server starts
+
+Run as Administrator (Windows: right-click terminal → Run as administrator):
+```
+node bin/cli.js -p 5173 --target-host localdev.uat.fynd.com
+```
+
+| Check | Expected |
+|-------|----------|
+| `✓ Custom URL` line | `http://localdev.uat.fynd.com:9001` |
+| `✓ DNS server` line | `running on 192.168.x.x:53` |
+| DNS setup box | Printed with Android + iPhone steps, LAN IP interpolated |
+| QR code | Encodes `http://localdev.uat.fynd.com:9001` (not the IP URL) |
+
+### 10c. Phone resolves the custom hostname
+
+Set phone WiFi DNS to the laptop LAN IP. Open `http://localdev.uat.fynd.com:9001` on the phone.
+
+| Check | Expected |
+|-------|----------|
+| App loads | Yes |
+| DevTools connects | Yes — device pill updates normally |
+
+### 10d. Cookie domain works end-to-end
+
+Backend sets `Set-Cookie: session=test; Domain=.uat.fynd.com`.
+
+| Scenario | Expected |
+|----------|----------|
+| Phone on custom URL (`localdev.uat.fynd.com:9001`) | Cookie stored, login works |
+| Phone on IP URL (`192.168.x.x:9001`) | Cookie dropped |
+
+### 10e. Unknown DNS queries still resolve
+
+While devmirror DNS is running, open `https://example.com` in the phone browser.
+
+| Check | Expected |
+|-------|----------|
+| Page loads | Yes — forwarded to 8.8.8.8 transparently |
+| devmirror terminal | No errors |
+
+### 10f. `--target-host` not set — no DNS attempted
+
+```
+node bin/cli.js -p 5173
+```
+
+| Check | Expected |
+|-------|----------|
+| DNS lines in output | None |
+| Behaviour | Identical to pre-0.2-H |
+
+---
+
 ## Definition of done
 
 All rows in all tables above pass without console errors in the DevTools browser

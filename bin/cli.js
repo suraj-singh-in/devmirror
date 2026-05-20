@@ -24,6 +24,7 @@ import { detectLanIp } from '../src/server/ip.js';
 import { findFreePort } from '../src/server/ports.js';
 import { startBridge } from '../src/server/bridge.js';
 import { startProxy } from '../src/server/proxy.js';
+import { startDns, patchLocalLookup } from '../src/server/dns.js';
 
 // Read version from package.json without a build step.
 const require = createRequire(import.meta.url);
@@ -204,6 +205,59 @@ function printQrCode(url) {
 }
 
 // ---------------------------------------------------------------------------
+// DNS setup box.
+// ---------------------------------------------------------------------------
+
+/**
+ * Prints a bordered box with step-by-step phone DNS setup instructions for
+ * both Android and iOS, interpolating the live LAN IP and hostname.
+ *
+ * @param {{ lanIp: string, targetHost: string, proxyPort: number }}
+ */
+function printDnsBox({ lanIp, targetHost, proxyPort }) {
+  const customUrl  = `http://${targetHost}:${proxyPort}`;
+  const stripAnsi  = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+  const lines = [
+    '',
+    `  devmirror DNS is running. Point your phone at it once and`,
+    `  cookies for ${targetHost} will work automatically.`,
+    '',
+    `  ${pc.bold('Android')}`,
+    `    1. Settings → WiFi → long-press your network → Modify network`,
+    `    2. Advanced options → IP settings → Static`,
+    `    3. DNS 1 → ${lanIp}`,
+    `    4. DNS 2 → 8.8.8.8`,
+    `    5. Save`,
+    '',
+    `  ${pc.bold('iPhone')}`,
+    `    1. Settings → WiFi → tap ⓘ next to your network`,
+    `    2. Configure DNS → Manual`,
+    `    3. Remove existing servers, add → ${lanIp}`,
+    `    4. Save`,
+    '',
+    `  Then open on your phone:  ${pc.cyan(customUrl)}`,
+    `  Or scan the QR code below ↓`,
+    '',
+  ];
+
+  // Inner width: at least 73, expanded if any line is wider.
+  const innerWidth = Math.max(73, ...lines.map((l) => stripAnsi(l).length + 2));
+
+  const title  = '─ Phone DNS setup ';
+  const topBar = title + '─'.repeat(innerWidth - title.length);
+  const botBar = '─'.repeat(innerWidth);
+
+  console.log(`  ┌${topBar}┐`);
+  for (const line of lines) {
+    const visLen  = stripAnsi(line).length;
+    const padding = ' '.repeat(innerWidth - visLen - 1);
+    console.log(`  │ ${line}${padding}│`);
+  }
+  console.log(`  └${botBar}┘`);
+}
+
+// ---------------------------------------------------------------------------
 // Main.
 // ---------------------------------------------------------------------------
 
@@ -274,9 +328,23 @@ async function main() {
   }
 
   const targetHost = options.targetHost ?? 'localhost';
+  if (options.targetHost !== null) patchLocalLookup(targetHost);
   const targetProtocol = (options.targetHttps || options.useHttps) ? 'https' : 'http';
   const phoneUrl = `http://${lanIp}:${proxyPort}`;
   const devtoolsUrl = `http://localhost:${proxyPort}/__devtools`;
+
+  // Attempt to spin up DNS server when --target-host is set.
+  let dnsServer = null;
+  let dnsActive = false;
+  if (options.targetHost !== null) {
+    try {
+      dnsServer = await startDns({ hostname: targetHost, address: lanIp });
+      dnsActive = true;
+    } catch (err) {
+      if (err.code !== 'EACCES' && err.code !== 'EADDRINUSE') throw err;
+      // No privilege or port taken — handled in output below.
+    }
+  }
 
   if (options.targetHttps) {
     printWarning('--target-https: TLS certificate verification is disabled for the proxy target.');
@@ -284,7 +352,15 @@ async function main() {
   const certNote = options.targetHttps ? '  (cert verification off)' : '';
   printSuccess(`Proxying:    ${targetProtocol}://${targetHost}:${options.port}${certNote}`);
   printSuccess(`Phone URL:   ${phoneUrl}`);
+  if (dnsActive) {
+    printSuccess(`Custom URL:  http://${targetHost}:${proxyPort}`);
+  }
   printSuccess(`DevTools:    ${devtoolsUrl}`);
+  if (dnsActive) {
+    printSuccess(`DNS server:  running on ${lanIp}:53`);
+  } else if (options.targetHost !== null) {
+    printWarning('DNS server could not start (run as Administrator to enable cookie-domain support).');
+  }
   printBlank();
 
   const proxy = await startProxy({
@@ -298,9 +374,14 @@ async function main() {
   });
   const bridge = await startBridge({ bridgePort });
 
-  // QR code (skipped if --no-qr).
+  // DNS setup box + QR code — QR encodes custom URL when DNS is active.
+  if (dnsActive) {
+    printDnsBox({ lanIp, targetHost, proxyPort });
+    printBlank();
+  }
   if (!options.noQr) {
-    await printQrCode(phoneUrl);
+    const qrUrl = dnsActive ? `http://${targetHost}:${proxyPort}` : phoneUrl;
+    await printQrCode(qrUrl);
     printBlank();
   }
 
@@ -322,6 +403,7 @@ async function main() {
     print('Shutting down...');
     proxy.close();
     bridge.close();
+    if (dnsServer) dnsServer.close();
     process.exit(0);
   }
 
