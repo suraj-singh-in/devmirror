@@ -1,7 +1,11 @@
 // WebSocket bridge server that routes messages between the phone browser and the DevTools panel.
 
 import { WebSocketServer, WebSocket } from 'ws';
+import pc from 'picocolors';
 import { isEntryPoint, test } from '../utils.js';
+
+const log      = (msg) => console.log(`${pc.magenta('[bridge]')} ${msg}`);
+const logError = (msg) => console.log(`${pc.red('[bridge]')} ${pc.red(msg)}`);
 
 // Message types that flow from the phone → bridge → DevTools panel.
 const PHONE_TO_DEVTOOLS_TYPES = new Set(['dimensions', 'console', 'touch', 'dom', 'styles', 'network_request_start', 'network_request_done', 'network_request_error']);
@@ -55,7 +59,7 @@ function parseMessage(data) {
  * @param {{ hadPhone: boolean }} flags - Mutable flags shared across all connections.
  * @returns {void}
  */
-function handleConnection(socket, phoneClients, devtoolsClients, flags) {
+function handleConnection(socket, phoneClients, devtoolsClients, flags, onDeviceUpdate, onDeviceDisconnect) {
   let role = null; // Set after the identify handshake.
 
   socket.once('message', (data) => {
@@ -63,7 +67,7 @@ function handleConnection(socket, phoneClients, devtoolsClients, flags) {
 
     // First message must be a valid identify frame.
     if (!message || message.type !== 'identify' || !['phone', 'devtools'].includes(message.role)) {
-      console.log('[bridge] Connection rejected — missing or invalid identify message.');
+      log('Connection rejected — missing or invalid identify message.');
       socket.close();
       return;
     }
@@ -72,14 +76,14 @@ function handleConnection(socket, phoneClients, devtoolsClients, flags) {
 
     if (role === 'phone') {
       phoneClients.add(socket);
-      console.log(`[bridge] Phone connected. Total phones: ${phoneClients.size}`);
+      log(`Phone connected. Total phones: ${phoneClients.size}`);
       // Notify DevTools — use phone_reconnected if a phone has been seen before.
       const eventType = flags.hadPhone ? 'phone_reconnected' : 'phone_connected';
       flags.hadPhone = true;
       broadcast(devtoolsClients, { type: eventType });
     } else {
       devtoolsClients.add(socket);
-      console.log(`[bridge] DevTools connected. Total devtools: ${devtoolsClients.size}`);
+      log(`DevTools connected. Total devtools: ${devtoolsClients.size}`);
     }
 
     // Route all subsequent messages based on the client's role.
@@ -88,11 +92,12 @@ function handleConnection(socket, phoneClients, devtoolsClients, flags) {
       if (!msg || !msg.type) return; // Ignore malformed frames silently.
 
       if (role === 'phone' && PHONE_TO_DEVTOOLS_TYPES.has(msg.type)) {
+        if (msg.type === 'dimensions' && onDeviceUpdate) onDeviceUpdate(msg);
         broadcast(devtoolsClients, msg);
       } else if (role === 'devtools' && DEVTOOLS_TO_PHONE_TYPES.has(msg.type)) {
         broadcast(phoneClients, msg);
       } else {
-        console.log(`[bridge] Unknown or misrouted message type: "${msg.type}" from ${role}.`);
+        log(`Unknown or misrouted message type: "${msg.type}" from ${role}.`);
       }
     });
   });
@@ -100,19 +105,20 @@ function handleConnection(socket, phoneClients, devtoolsClients, flags) {
   socket.on('close', () => {
     if (role === 'phone') {
       phoneClients.delete(socket);
-      console.log(`[bridge] Phone disconnected. Total phones: ${phoneClients.size}`);
+      log(`Phone disconnected. Total phones: ${phoneClients.size}`);
       // Notify DevTools so it can show the reconnecting state.
       broadcast(devtoolsClients, { type: 'phone_disconnected' });
+      if (onDeviceDisconnect) onDeviceDisconnect();
     } else if (role === 'devtools') {
       devtoolsClients.delete(socket);
-      console.log(`[bridge] DevTools disconnected. Total devtools: ${devtoolsClients.size}`);
+      log(`DevTools disconnected. Total devtools: ${devtoolsClients.size}`);
     }
     // If role is still null the connection was rejected before identify — nothing to clean up.
   });
 
   socket.on('error', (error) => {
     // Log but do not crash — the 'close' event fires after 'error' and handles cleanup.
-    console.log(`[bridge] Socket error (role: ${role ?? 'unidentified'}): ${error.message}`);
+    logError(`Socket error (role: ${role ?? 'unidentified'}): ${error.message}`);
   });
 }
 
@@ -127,7 +133,7 @@ function handleConnection(socket, phoneClients, devtoolsClients, flags) {
  * @param {number} options.bridgePort - Port for this WebSocket server to listen on.
  * @returns {Promise<{ server: import('ws').WebSocketServer, close: () => Promise<void> }>}
  */
-export function startBridge({ bridgePort }) {
+export function startBridge({ bridgePort, onDeviceUpdate = null, onDeviceDisconnect = null }) {
   return new Promise((resolve, reject) => {
     const phoneClients = new Set();
     const devtoolsClients = new Set();
@@ -136,16 +142,20 @@ export function startBridge({ bridgePort }) {
     const server = new WebSocketServer({ port: bridgePort });
 
     server.on('connection', (socket) => {
-      handleConnection(socket, phoneClients, devtoolsClients, { get hadPhone() { return hadPhone; }, set hadPhone(v) { hadPhone = v; } });
+      handleConnection(
+        socket, phoneClients, devtoolsClients,
+        { get hadPhone() { return hadPhone; }, set hadPhone(v) { hadPhone = v; } },
+        onDeviceUpdate, onDeviceDisconnect,
+      );
     });
 
     server.on('error', (error) => {
-      console.log(`[bridge] Server error: ${error.message}`);
+      logError(`Server error: ${error.message}`);
       reject(error);
     });
 
     server.once('listening', () => {
-      console.log(`[bridge] Listening on port ${bridgePort}`);
+      log(`Listening on port ${bridgePort}`);
 
       /**
        * Closes the WebSocket server and terminates all open connections.

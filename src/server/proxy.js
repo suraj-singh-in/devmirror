@@ -8,7 +8,11 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import httpProxy from 'http-proxy';
 import * as cheerio from 'cheerio';
+import pc from 'picocolors';
 import { isEntryPoint, test } from '../utils.js';
+
+const log      = (msg) => console.log(`${pc.cyan('[proxy]')} ${msg}`);
+const logError = (msg) => console.log(`${pc.red('[proxy]')} ${pc.red(msg)}`);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -63,7 +67,7 @@ async function serveFile(filePath, contentType, res) {
     res.writeHead(200, { 'Content-Type': contentType });
     res.end(content);
   } catch (error) {
-    console.log(`[proxy] Could not read internal file at ${filePath}: ${error.message}`);
+    logError(`Could not read internal file at ${filePath}: ${error.message}`);
     res.writeHead(500, { 'Content-Type': 'text/plain' });
     res.end('devmirror internal error: could not read file.');
   }
@@ -92,7 +96,7 @@ async function serveBridgeScript(lanIp, bridgePort, res) {
     res.writeHead(200, { 'Content-Type': 'application/javascript' });
     res.end(script);
   } catch (error) {
-    console.log(`[proxy] Could not read bridge script: ${error.message}`);
+    logError(`Could not read bridge script: ${error.message}`);
     res.writeHead(500, { 'Content-Type': 'text/plain' });
     res.end('devmirror internal error: could not read bridge script.');
   }
@@ -145,7 +149,7 @@ async function serveDevtoolsPanel(bridgePort, res) {
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(html);
   } catch (error) {
-    console.log(`[proxy] Could not assemble DevTools panel: ${error.message}`);
+    logError(`Could not assemble DevTools panel: ${error.message}`);
     res.writeHead(500, { 'Content-Type': 'text/plain' });
     res.end('devmirror internal error: could not assemble DevTools panel.');
   }
@@ -171,7 +175,7 @@ async function serveDevtoolsPanel(bridgePort, res) {
  * @param {boolean} options.useHttps - Whether the dev server uses HTTPS.
  * @returns {void}
  */
-function forwardRequest(req, res, { targetPort, useHttps, targetHost, targetHttps }) {
+function forwardRequest(req, res, { targetPort, useHttps, targetHost, targetHttps, localLookup }) {
   const targetProtocol = (targetHttps || useHttps) ? 'https' : 'http';
 
   const forwardHeaders = {
@@ -189,6 +193,7 @@ function forwardRequest(req, res, { targetPort, useHttps, targetHost, targetHttp
     method: req.method,
     headers: forwardHeaders,
     ...(targetHttps ? { rejectUnauthorized: false } : {}),
+    ...(localLookup ? { lookup: localLookup } : {}),
   };
 
   // Use the correct request function for the target protocol.
@@ -206,10 +211,10 @@ function forwardRequest(req, res, { targetPort, useHttps, targetHost, targetHttp
 
   targetReq.on('error', (error) => {
     if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
-      console.log(`[proxy] Dev server not reachable at ${targetHost}:${targetPort}.`);
+      logError(`Dev server not reachable at ${targetHost}:${targetPort}.`);
       sendDevServerErrorPage(res, targetHost, targetPort);
     } else {
-      console.log(`[proxy] Request error for ${req.url}: ${error.message}`);
+      logError(`Request error for ${req.url}: ${error.message}`);
       res.writeHead(502, { 'Content-Type': 'text/plain' });
       res.end('Proxy error. Check the [proxy] output in your terminal.');
     }
@@ -252,7 +257,7 @@ function bufferAndInject(targetRes, res) {
   });
 
   targetRes.on('error', (error) => {
-    console.log(`[proxy] Error reading response body: ${error.message}`);
+    logError(`Error reading response body: ${error.message}`);
     if (!res.headersSent) {
       res.writeHead(502, { 'Content-Type': 'text/plain' });
     }
@@ -308,7 +313,7 @@ function sendDevServerErrorPage(res, targetHost, targetPort) {
  * @param {boolean} options.useHttps - Whether the target dev server uses HTTPS.
  * @returns {Promise<{ server: import('node:http').Server, close: () => Promise<void> }>}
  */
-export function startProxy({ targetPort, proxyPort, lanIp, bridgePort, useHttps, targetHost = 'localhost', targetHttps = false }) {
+export function startProxy({ targetPort, proxyPort, lanIp, bridgePort, useHttps, targetHost = 'localhost', targetHttps = false, localLookup = null }) {
   return new Promise((resolve, reject) => {
     // A minimal http-proxy instance — used only for WebSocket upgrade proxying.
     // HTTP requests are handled directly to allow response body interception.
@@ -317,7 +322,7 @@ export function startProxy({ targetPort, proxyPort, lanIp, bridgePort, useHttps,
     });
 
     wsProxy.on('error', (error, _req, socket) => {
-      console.log(`[proxy] WebSocket proxy error: ${error.message}`);
+      logError(`WebSocket proxy error: ${error.message}`);
       // Destroy the socket so the browser doesn't hang on a failed HMR connection.
       socket.destroy();
     });
@@ -334,28 +339,31 @@ export function startProxy({ targetPort, proxyPort, lanIp, bridgePort, useHttps,
         return;
       }
 
-      forwardRequest(req, res, { targetPort, useHttps, targetHost, targetHttps });
+      forwardRequest(req, res, { targetPort, useHttps, targetHost, targetHttps, localLookup });
     });
 
     // Forward all WebSocket upgrade requests straight to the dev server.
     // The bridge runs on its own separate port — these upgrades are HMR only.
     server.on('upgrade', (req, socket, head) => {
       const wsProtocol = (targetHttps || useHttps) ? 'wss' : 'ws';
-      const target = `${wsProtocol}://${targetHost}:${targetPort}`;
+      // http-proxy doesn't support a custom lookup function, so when a local
+      // lookup override is active we connect directly to 127.0.0.1.
+      const wsHost = localLookup ? '127.0.0.1' : targetHost;
+      const target = `${wsProtocol}://${wsHost}:${targetPort}`;
 
       wsProxy.ws(req, socket, head, { target }, (error) => {
-        console.log(`[proxy] WebSocket upgrade failed for ${req.url}: ${error.message}`);
+        logError(`WebSocket upgrade failed for ${req.url}: ${error.message}`);
         socket.destroy();
       });
     });
 
     server.on('error', (error) => {
-      console.log(`[proxy] Server error: ${error.message}`);
+      logError(`Server error: ${error.message}`);
       reject(error);
     });
 
     server.once('listening', () => {
-      console.log(`[proxy] Listening on port ${proxyPort}`);
+      log(`Listening on port ${proxyPort}`);
 
       /**
        * Closes the proxy HTTP server and the internal WS proxy instance.
@@ -424,7 +432,7 @@ if (isEntryPoint(import.meta.url)) {
     });
   }
 
-  console.log('\n[proxy] Running self-tests...\n');
+  console.log(`\n${pc.cyan('[proxy]')} Running self-tests...\n`);
 
   // Test 1 — startProxy resolves with { server, close }.
   await test('startProxy resolves with { server, close }', async () => {
@@ -568,5 +576,5 @@ if (isEntryPoint(import.meta.url)) {
     }
   });
 
-  console.log('\n[proxy] Self-tests complete.\n');
+  console.log(`\n${pc.cyan('[proxy]')} Self-tests complete.\n`);
 }

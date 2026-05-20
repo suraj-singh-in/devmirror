@@ -1,23 +1,32 @@
 import dgram from 'node:dgram';
 import dns   from 'node:dns';
+import pc    from 'picocolors';
+
+const log      = (msg) => console.log(`${pc.yellow('[dns]')} ${msg}`);
+const logError = (msg) => console.log(`${pc.red('[dns]')} ${pc.red(msg)}`);
 
 /**
- * Patches Node's dns.lookup so that `hostname` resolves to 127.0.0.1
- * within this process only — no system hosts file edit required.
- * Affects all outgoing TCP connections (http.request, net.connect, etc.).
+ * Returns a per-request lookup function that resolves `hostname` to 127.0.0.1
+ * within this process only, falling back to system DNS for all other hostnames.
+ *
+ * Pass the returned function as the `lookup` option in http.request /
+ * https.request — this is Node's supported per-request DNS override and does
+ * not touch global state.
+ *
+ * Handles both the classic callback form (Node ≤ 20) and the Happy-Eyeballs
+ * { all: true } form introduced in Node 21.
  *
  * @param {string} hostname
+ * @returns {(host: string, options: object, callback: Function) => void}
  */
-export function patchLocalLookup(hostname) {
-  const target  = hostname.toLowerCase();
-  const _lookup = dns.lookup.bind(dns);
-  dns.lookup = function (host, options, callback) {
+export function makeLocalLookup(hostname) {
+  const target = hostname.toLowerCase();
+  return function localLookup(host, options, callback) {
     if (typeof options === 'function') { callback = options; options = {}; }
     if (host.toLowerCase() === target) {
       const reqFamily = typeof options === 'number' ? options : (options?.family ?? 0);
       const family    = reqFamily === 6 ? 6 : 4;
       const address   = family === 6 ? '::1' : '127.0.0.1';
-      // Node 21+ (Happy Eyeballs) calls with { all: true } and expects an array.
       if (options && options.all) {
         setImmediate(() => callback(null, [{ address, family }]));
       } else {
@@ -25,12 +34,12 @@ export function patchLocalLookup(hostname) {
       }
       return;
     }
-    return _lookup(host, options, callback);
+    dns.lookup(host, options, callback);
   };
 }
 
-const UPSTREAM_PORT    = 53;
-const FORWARD_TIMEOUT  = 3000;
+const UPSTREAM_PORT   = 53;
+const FORWARD_TIMEOUT = 3000;
 
 /**
  * Parse a DNS QNAME starting at `offset` in `msg`.
@@ -92,7 +101,7 @@ function forward(msg, upstream, rinfo, server) {
     clearTimeout(timer);
     try { sock.close(); } catch { /* already closed */ }
     server.send(reply, rinfo.port, rinfo.address, (err) => {
-      if (err) console.log(`[dns] relay error: ${err.message}`);
+      if (err) logError(`relay error: ${err.message}`);
     });
   });
 
@@ -101,7 +110,7 @@ function forward(msg, upstream, rinfo, server) {
     settled = true;
     clearTimeout(timer);
     try { sock.close(); } catch { /* already closed */ }
-    console.log(`[dns] upstream error: ${err.message}`);
+    logError(`upstream error: ${err.message}`);
   });
 
   sock.send(msg, UPSTREAM_PORT, upstream);
@@ -130,7 +139,7 @@ export function startDns({ hostname, address, upstream = '8.8.8.8' }) {
       if (!bound) {
         reject(err);
       } else {
-        console.log(`[dns] server error: ${err.message}`);
+        logError(`server error: ${err.message}`);
       }
     });
 
@@ -140,7 +149,7 @@ export function startDns({ hostname, address, upstream = '8.8.8.8' }) {
       if (name === target) {
         const response = buildAResponse(msg, address);
         server.send(response, rinfo.port, rinfo.address, (err) => {
-          if (err) console.log(`[dns] send error: ${err.message}`);
+          if (err) logError(`send error: ${err.message}`);
         });
       } else {
         forward(msg, upstream, rinfo, server);
