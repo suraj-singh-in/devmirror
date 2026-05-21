@@ -2,6 +2,10 @@
 
 **Test your web app on a real phone -- instantly, over WiFi, with zero config.**
 
+<p align="center">
+  <img src="assets/logo_animated.svg" width="180" alt="dev-mirror" />
+</p>
+
 ```sh
 npx @samosa-code/dev-mirror -p 3000
 ```

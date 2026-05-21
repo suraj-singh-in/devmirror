@@ -1,0 +1,72 @@
+<?xml
+version="1.0" encoding="UTF-8"?>
+<svg id="gram" width="100%" viewBox="0 0 680 680" role="img" xmlns="http://www.w3.org/2000/svg">
+    <title>Gramophone icon â€” animated draw-on</title>
+    <desc>Gramophone with horn, dark navy strokes on white, draw-on stroke animation</desc>
+    <defs>
+        <style>
+            .s {
+                fill: none;
+                stroke: #0D1F3C;
+                stroke-linecap: round;
+                stroke-linejoin: round
+            }
+
+            .draw {
+                stroke-dasharray: var(--len);
+                stroke-dashoffset: var(--len);
+                animation: draw var(--dur) var(--delay) ease forwards
+            }
+
+            @keyframes draw {
+                to {
+                    stroke-dashoffset: 0
+                }
+            }
+
+            .fi {
+                opacity: 0;
+                animation: fi 0.3s var(--delay) ease forwards
+            }
+
+            @keyframes fi {
+                to {
+                    opacity: 1
+                }
+            }
+        </style>
+    </defs>
+    <rect width="680" height="680" fill="transparent"/>
+    <g transform="translate(340,340)">
+        <rect class="fi" x="-90" y="80" width="180" height="110" rx="8" fill="#F0F4FF" style="--delay:0.1s"/>
+        <rect class="s draw" x="-90" y="80" width="180" height="110" rx="8" stroke-width="5" style="--len:600;--dur:0.6s;--delay:0.1s"/>
+        <rect class="fi" x="-66" y="96" width="132" height="78" rx="4" fill="#ffffff" style="--delay:0.5s"/>
+        <rect class="s draw" x="-66" y="96" width="132" height="78" rx="4" stroke-width="3.5" style="--len:440;--dur:0.5s;--delay:0.5s"/>
+        <circle class="fi" cx="0" cy="135" r="28" fill="#F0F4FF" style="--delay:0.8s"/>
+        <circle class="s draw" cx="0" cy="135" r="28" stroke-width="4" style="--len:180;--dur:0.4s;--delay:0.8s"/>
+        <circle class="fi" cx="0" cy="135" r="16" fill="#ffffff" style="--delay:1.0s"/>
+        <circle class="s draw" cx="0" cy="135" r="16" stroke-width="3" style="--len:105;--dur:0.3s;--delay:1.0s"/>
+        <circle class="fi" cx="0" cy="135" r="5" fill="#0D1F3C" stroke="none" style="--delay:1.2s"/>
+        <line class="s draw" x1="-56" y1="110" x2="-56" y2="170" stroke-width="2.5" style="--len:62;--dur:0.2s;--delay:0.9s;opacity:0.2"/>
+        <line class="s draw" x1="-42" y1="102" x2="-42" y2="168" stroke-width="2.5" style="--len:68;--dur:0.2s;--delay:0.95s;opacity:0.2"/>
+        <line class="s draw" x1="42" y1="102" x2="42" y2="168" stroke-width="2.5" style="--len:68;--dur:0.2s;--delay:1.0s;opacity:0.2"/>
+        <line class="s draw" x1="56" y1="110" x2="56" y2="170" stroke-width="2.5" style="--len:62;--dur:0.2s;--delay:1.05s;opacity:0.2"/>
+        <rect class="fi" x="-14" y="185" width="28" height="14" rx="3" fill="#F0F4FF" style="--delay:0.6s"/>
+        <rect class="s draw" x="-14" y="185" width="28" height="14" rx="3" stroke-width="3.5" style="--len:88;--dur:0.25s;--delay:0.6s"/>
+        <path class="s draw" d="M -14,72 L -14,30 Q -14,18 -2,18 L 20,18" stroke-width="5" style="--len:70;--dur:0.3s;--delay:1.3s"/>
+        <path class="s draw" d="M 20,18 Q 60,18 80,-20 Q 110,-65 150,-90 Q 195,-118 240,-120" stroke-width="5" style="--len:280;--dur:0.5s;--delay:1.6s"/>
+        <path class="s draw" d="M 240,-120 Q 270,-121 280,-100 Q 290,-78 270,-58 Q 250,-38 220,-30 Q 190,-22 155,-18 Q 120,-14 90,-5 Q 60,4 48,22 Q 36,40 40,58 Q 44,72 60,78 Q 76,84 95,80" stroke-width="5" style="--len:420;--dur:0.7s;--delay:2.1s"/>
+        <path class="s draw" d="M 95,80 Q 110,76 110,66 Q 110,55 95,50 Q 70,44 48,50 Q 26,56 20,72 Q 14,88 20,104 Q 26,120 46,128 Q 66,136 90,132 Q 114,128 130,114" stroke-width="5" style="--len:310;--dur:0.55s;--delay:2.8s"/>
+        <circle class="fi" cx="255" cy="-110" r="18" fill="#F0F4FF" style="--delay:3.2s"/>
+        <circle class="s draw" cx="255" cy="-110" r="18" stroke-width="4" style="--len:114;--dur:0.3s;--delay:3.2s"/>
+        <circle class="fi" cx="255" cy="-110" r="8" fill="#1D9E75" stroke="#1D9E75" stroke-width="2.5" style="--delay:3.5s"/>
+        <line class="s draw" x1="-90" y1="190" x2="-110" y2="230" stroke-width="4" style="--len:46;--dur:0.2s;--delay:0.7s"/>
+        <line class="s draw" x1="90" y1="190" x2="110" y2="230" stroke-width="4" style="--len:46;--dur:0.2s;--delay:0.75s"/>
+        <rect class="fi" x="-120" y="226" width="240" height="14" rx="6" fill="#F0F4FF" style="--delay:0.8s"/>
+        <rect class="s draw" x="-120" y="226" width="240" height="14" rx="6" stroke-width="3.5" style="--len:520;--dur:0.4s;--delay:0.8s"/>
+        <line class="s draw" x1="-60" y1="96" x2="-60" y2="78" stroke-width="3" style="--len:20;--dur:0.15s;--delay:0.45s;opacity:0.3"/>
+        <line class="s draw" x1="60" y1="96" x2="60" y2="78" stroke-width="3" style="--len:20;--dur:0.15s;--delay:0.48s;opacity:0.3"/>
+        <rect class="fi" x="-70" y="68" width="140" height="14" rx="3" fill="#F0F4FF" style="--delay:0.3s"/>
+        <rect class="s draw" x="-70" y="68" width="140" height="14" rx="3" stroke-width="3.5" style="--len:320;--dur:0.35s;--delay:0.3s"/>
+    </g>
+</svg>

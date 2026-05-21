@@ -555,7 +555,7 @@ async function main() {
     process.stdin.setEncoding('utf8');
 
     process.stdin.on('data', (key) => {
-      if (key === '') {
+      if (key === '\u0003') {
         // Ctrl+C
         shutdown();
       } else if (key === 'h') {

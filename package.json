@@ -1,6 +1,6 @@
 {
   "name": "@samosa-code/dev-mirror",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Test your web app on a real phone — instantly, over WiFi, with zero config.",
   "type": "module",
   "bin": {
