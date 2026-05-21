@@ -209,6 +209,237 @@
     };
   }
 
+  // ── Network interception helpers ─────────────────────────────────────────
+
+  function generateRequestId() {
+    return Math.random().toString(36).slice(2, 10);
+  }
+
+  function resolveUrl(input) {
+    if (input && typeof input === 'object' && typeof input.url === 'string') { return input.url; }
+    try { return new URL(String(input), location.href).href; } catch (e) { return String(input); }
+  }
+
+  function headersToObject(headers) {
+    var result = {};
+    try { headers.forEach(function(value, key) { result[key] = value; }); } catch (e) {}
+    return result;
+  }
+
+  function parseXhrResponseHeaders(raw) {
+    var result = {};
+    if (!raw) { return result; }
+    raw.trim().split(/[\r\n]+/).forEach(function(line) {
+      var idx = line.indexOf(': ');
+      if (idx > -1) { result[line.slice(0, idx).toLowerCase()] = line.slice(idx + 2); }
+    });
+    return result;
+  }
+
+  function serializeBody(body) {
+    if (body === null || body === undefined) { return null; }
+    if (typeof body === 'string') { return { type: 'text', content: body.slice(0, 50000) }; }
+    if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
+      return { type: 'text', content: body.toString() };
+    }
+    if (typeof FormData !== 'undefined' && body instanceof FormData) {
+      var entries = {};
+      try { body.forEach(function(value, key) { entries[key] = String(value); }); } catch (e) {}
+      return { type: 'formdata', content: entries };
+    }
+    return { type: 'binary', content: '[Binary data]' };
+  }
+
+  function safeReadBody(response) {
+    var MAX_BYTES = 100 * 1024;
+    return response.arrayBuffer().then(function(buffer) {
+      var text;
+      try { text = new TextDecoder().decode(buffer.slice(0, MAX_BYTES)); } catch (e) { text = ''; }
+      return { text: text, byteLength: buffer.byteLength, truncated: buffer.byteLength > MAX_BYTES };
+    }).catch(function() {
+      return { text: '[Could not read response body]', byteLength: 0, truncated: false };
+    });
+  }
+
+  function safeGetXhrBody(xhr) {
+    var MAX_CHARS = 100 * 1024;
+    try {
+      var text = xhr.responseText || '';
+      return { text: text.slice(0, MAX_CHARS), byteLength: text.length, truncated: text.length > MAX_CHARS };
+    } catch (e) {
+      return { text: '[Could not read response body]', byteLength: 0, truncated: false };
+    }
+  }
+
+  function getResourceTiming(url, requestStartTime) {
+    try {
+      var entries = performance.getEntriesByName(url, 'resource');
+      if (!entries.length) { return null; }
+      var entry = null;
+      for (var i = 0; i < entries.length; i++) {
+        var diff = Math.abs(entries[i].startTime - requestStartTime);
+        if (!entry || diff < Math.abs(entry.startTime - requestStartTime)) { entry = entries[i]; }
+      }
+      if (!entry || entry.responseEnd === 0) { return null; }
+      return {
+        dns:      Math.round(entry.domainLookupEnd  - entry.domainLookupStart),
+        connect:  Math.round(entry.connectEnd       - entry.connectStart),
+        ssl:      entry.secureConnectionStart > 0 ? Math.round(entry.connectEnd - entry.secureConnectionStart) : 0,
+        ttfb:     Math.round(entry.responseStart    - entry.requestStart),
+        download: Math.round(entry.responseEnd      - entry.responseStart),
+        total:    Math.round(entry.responseEnd      - entry.startTime),
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function detectResourceType(contentType, url) {
+    if (!contentType) {
+      var path = url.split('?')[0].toLowerCase();
+      if (path.slice(-3) === '.js' || path.slice(-4) === '.mjs') { return 'js'; }
+      if (path.slice(-4) === '.css') { return 'css'; }
+      if (/\.(png|jpg|jpeg|gif|webp|svg|ico)$/.test(path)) { return 'img'; }
+      return 'other';
+    }
+    var ct = contentType.toLowerCase();
+    if (ct.indexOf('application/json') !== -1 || ct.indexOf('text/plain') !== -1) { return 'fetch'; }
+    if (ct.indexOf('javascript') !== -1) { return 'js'; }
+    if (ct.indexOf('css') !== -1) { return 'css'; }
+    if (ct.indexOf('image/') !== -1) { return 'img'; }
+    if (ct.indexOf('text/html') !== -1) { return 'other'; }
+    return 'other';
+  }
+
+  // ── Fetch interception ───────────────────────────────────────────────────
+
+  if (typeof window.fetch === 'function') {
+    var originalFetch = window.fetch.bind(window);
+    window.fetch = function devmirrorFetch(input, init) {
+      if (init === undefined) { init = {}; }
+      var requestId = generateRequestId();
+      var method = ((init && init.method) || 'GET').toUpperCase();
+      var url = resolveUrl(input);
+      var startTime = performance.now();
+      var requestHeaders = headersToObject(new Headers(init.headers || {}));
+      var requestBody = serializeBody(init.body !== undefined ? init.body : null);
+
+      send({
+        type: 'network_request_start',
+        requestId: requestId, method: method, url: url,
+        requestHeaders: requestHeaders, requestBody: requestBody,
+        startTime: startTime, initiator: 'fetch',
+      });
+
+      return originalFetch(input, init).then(function(response) {
+        var endTime = performance.now();
+        var status = response.status;
+        var statusText = response.statusText;
+        var responseHeaders = headersToObject(response.headers);
+        var contentType = response.headers.get('content-type') || '';
+        var cloned = response.clone();
+        safeReadBody(cloned).then(function(body) {
+          var timing = getResourceTiming(url, startTime);
+          send({
+            type: 'network_request_done',
+            requestId: requestId,
+            status: status, statusText: statusText,
+            responseHeaders: responseHeaders,
+            body: body.text, bodyTruncated: body.truncated,
+            contentType: contentType,
+            resourceType: detectResourceType(contentType, url),
+            size: body.byteLength,
+            duration: Math.round(endTime - startTime),
+            timing: timing,
+          });
+        }).catch(function() {});
+        return response;
+      }, function(error) {
+        send({
+          type: 'network_request_error',
+          requestId: requestId,
+          error: error.message,
+          duration: Math.round(performance.now() - startTime),
+        });
+        throw error;
+      });
+    };
+  }
+
+  // ── XHR interception ─────────────────────────────────────────────────────
+
+  if (typeof window.XMLHttpRequest !== 'undefined') {
+    var OriginalXHR = window.XMLHttpRequest;
+    window.XMLHttpRequest = function devmirrorXHR() {
+      var xhr = new OriginalXHR();
+      var requestId = generateRequestId();
+      var xhrMethod = 'GET';
+      var xhrUrl = '';
+      var xhrStartTime = 0;
+      var xhrRequestBody = null;
+      var xhrRequestHeaders = {};
+
+      var originalOpen = xhr.open;
+      xhr.open = function(m, u) {
+        xhrMethod = m.toUpperCase();
+        xhrUrl = resolveUrl(u);
+        return originalOpen.apply(xhr, arguments);
+      };
+
+      var originalSetRequestHeader = xhr.setRequestHeader;
+      xhr.setRequestHeader = function(key, value) {
+        xhrRequestHeaders[key] = value;
+        return originalSetRequestHeader.apply(xhr, arguments);
+      };
+
+      var originalSend = xhr.send;
+      xhr.send = function(body) {
+        xhrStartTime = performance.now();
+        xhrRequestBody = serializeBody(body !== undefined ? body : null);
+
+        send({
+          type: 'network_request_start',
+          requestId: requestId, method: xhrMethod, url: xhrUrl,
+          requestHeaders: xhrRequestHeaders,
+          requestBody: xhrRequestBody,
+          startTime: xhrStartTime, initiator: 'xhr',
+        });
+
+        xhr.addEventListener('loadend', function() {
+          var duration = Math.round(performance.now() - xhrStartTime);
+          var responseResult = safeGetXhrBody(xhr);
+          var timing = getResourceTiming(xhrUrl, xhrStartTime);
+          var ct = xhr.getResponseHeader('content-type') || '';
+          send({
+            type: 'network_request_done',
+            requestId: requestId,
+            status: xhr.status, statusText: xhr.statusText,
+            responseHeaders: parseXhrResponseHeaders(xhr.getAllResponseHeaders()),
+            body: responseResult.text, bodyTruncated: responseResult.truncated,
+            contentType: ct,
+            resourceType: detectResourceType(ct, xhrUrl),
+            size: responseResult.byteLength,
+            duration: duration, timing: timing,
+          });
+        });
+
+        xhr.addEventListener('error', function() {
+          send({
+            type: 'network_request_error',
+            requestId: requestId,
+            error: 'Network error',
+            duration: Math.round(performance.now() - xhrStartTime),
+          });
+        });
+
+        return originalSend.apply(xhr, arguments);
+      };
+
+      return xhr;
+    };
+    window.XMLHttpRequest.prototype = OriginalXHR.prototype;
+  }
+
   // Patch console.log/warn/error to forward output to the DevTools panel.
   // Always calls the original first so the phone's own console is unaffected.
   (function patchConsole() {

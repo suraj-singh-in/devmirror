@@ -144,6 +144,276 @@ significant change to `src/devtools/` or `src/server/`.
 
 ---
 
+## 8. --target-host / --target-https flags
+
+### 8a. Default behaviour unchanged
+
+Run without any new flags:
+```
+node bin/cli.js -p 3000
+```
+Confirm startup shows `Proxying: http://localhost:3000`. App loads on phone. No regression.
+
+### 8b. Custom HTTP host
+
+Add `127.0.0.1 devmirror-test.local` to your hosts file (`C:\Windows\System32\drivers\etc\hosts` on Windows, `/etc/hosts` on Mac/Linux).
+
+Run:
+```
+node bin/cli.js -p 5173 --target-host devmirror-test.local
+```
+
+| Check | Expected |
+|-------|----------|
+| Startup line | `Proxying: http://devmirror-test.local:5173` |
+| App loads on phone | Yes — via QR code |
+| No CORS errors | Confirm with a fetch/XHR from the app |
+
+### 8c. Custom HTTPS host with self-signed cert
+
+Run your dev server with HTTPS on `devmirror-test.local:5173`, then:
+```
+node bin/cli.js -p 5173 --target-host devmirror-test.local --target-https
+```
+
+| Check | Expected |
+|-------|----------|
+| Warning line | `! --target-https: TLS certificate verification is disabled for the proxy target.` |
+| Startup line | `Proxying: https://devmirror-test.local:5173  (cert verification off)` |
+| No TLS errors | App loads on phone without certificate errors |
+| Origin header | `https://devmirror-test.local:5173` (verify via API call) |
+
+### 8d. --target-https without --target-host
+
+Run:
+```
+node bin/cli.js -p 5173 --target-https
+```
+Confirm startup shows `Proxying: https://localhost:5173  (cert verification off)`.
+Valid use case for developers running localhost HTTPS.
+
+### 8e. HMR still works with custom host
+
+With `--target-host` and `--target-https` set, edit a source file.
+Confirm the phone browser updates without a full reload.
+
+### 8f. Protocol stripping warning
+
+Run:
+```
+node bin/cli.js -p 5173 --target-host http://localdev.uat.company.com
+```
+Confirm:
+- Warning: `! --target-host should be a hostname only, not a URL. Using: localdev.uat.company.com`
+- Protocol is stripped and proxy targets `localdev.uat.company.com:5173`.
+
+### 8g. IP address rejection
+
+Run:
+```
+node bin/cli.js -p 5173 --target-host 192.168.1.5
+```
+Confirm:
+- Error: `✗ --target-host is for custom local domain names, not IP addresses. Use --host for IP overrides.`
+- Process exits with code 1.
+
+---
+
+## Known limitations
+
+### --target-host: client-side hostname guards
+
+If your app redirects based on hostname (e.g. checks `window.location.hostname`
+and redirects to the canonical domain), the phone will be redirected to a URL
+it cannot resolve. Disable that guard in your local dev config when testing
+with devmirror.
+
+---
+
+## 9. Network tab
+
+### 9a. GET request appears instantly
+
+1. Connect the phone. Open the proxied app — it makes a fetch call on load.
+2. Switch to the **Network** tab.
+
+| Check | Expected |
+|-------|----------|
+| Row appears | Green dot, GET badge, path (e.g. `/api/user`), duration in ms, size in kB |
+| Click the row | Detail pane shows full URL, status chip, duration, size, content-type chips |
+| Request Headers sub-tab | Shows headers sent with the request |
+| Response Headers sub-tab | Shows headers returned by the server |
+| Response sub-tab | Shows response body (prettified JSON if `application/json`) |
+
+### 9b. POST request — Payload sub-tab
+
+1. Trigger a form submission or login from the phone.
+2. Click the POST row in the Network tab.
+
+| Check | Expected |
+|-------|----------|
+| Payload sub-tab visible | Tab appears (hidden for GET/DELETE without body) |
+| Payload content | Request body shown (JSON prettified, form-data as key/value table) |
+
+### 9c. Error request (4xx / 5xx)
+
+1. From the phone, call a non-existent API endpoint.
+
+| Check | Expected |
+|-------|----------|
+| Row dot colour | Red |
+| Errors filter pill | Shows only this row when active |
+| Status chip in detail | Red colour, e.g. `✗ 404 Not Found` |
+
+### 9d. Pending request indicator
+
+1. From the phone, trigger a slow request (or throttle the dev server).
+
+| Check | Expected |
+|-------|----------|
+| While in-flight | Amber dot, size column reads "pending" in amber |
+| After completion | Dot updates to green/red, size and duration populate |
+
+### 9e. Filter pills
+
+Load a page that fetches JS, CSS, and JSON API data from the phone.
+
+| Pill | Expected rows |
+|------|---------------|
+| All | All requests |
+| Fetch | Only fetch/JSON requests |
+| XHR | Only XHR requests |
+| JS | Only `.js` file requests |
+| CSS | Only `.css` file requests |
+| Errors | Only 4xx/5xx or network-error requests |
+
+### 9f. URL search
+
+1. Type `/api` in the sidebar search box.
+2. Confirm only rows whose URL contains `/api` are shown.
+3. Clear the search — all requests (within active filter) return.
+
+### 9g. Detail search — Request Headers
+
+1. Select any request. Click **Request Headers** sub-tab.
+2. Type `content` in the detail search box.
+3. Confirm only header rows whose key or value contains "content" are shown.
+4. Confirm the matched text is highlighted in amber.
+5. Result count shows `N of M results`.
+6. Click × — search clears, all rows return.
+
+### 9h. Detail search — Response body
+
+1. Select a JSON API request. Click **Response** sub-tab.
+2. Type a key from the JSON (e.g. `email`).
+3. Confirm only matching lines are shown and highlighted.
+
+### 9i. Image preview
+
+1. Load a page that fetches an image.
+2. Click the image request row. Click **Preview**.
+3. Confirm the "Image response — Preview not available" empty state appears.
+4. Confirm search bar is hidden on the Preview tab for images.
+
+### 9j. Timing sub-tab
+
+1. Select any completed request. Click **Timing**.
+2. If `PerformanceResourceTiming` data is available: confirm DNS, Connecting, SSL/TLS, Waiting (TTFB), and Receiving rows with coloured bars and ms values. TOTAL section shows overall duration.
+3. If data is unavailable (e.g. cross-origin): confirm "Timing data not available" empty state.
+4. Confirm the search bar is hidden on the Timing tab.
+
+### 9k. Preserve requests toggle
+
+1. Leave toggle **off** (default).
+2. Reload the phone tab — the request list clears.
+3. Enable **Preserve requests** toggle (turns green).
+4. Reload the phone tab — the request list is **not** cleared; new requests are appended.
+
+### 9l. Clear button
+
+1. With some requests in the list, click the trash icon.
+2. The request list empties and the detail pane returns to "Select a request" state.
+
+### 9m. Tab badge
+
+1. While on the **Device** tab, trigger several requests on the phone.
+2. The **Network** tab label gains a green badge showing the unread count.
+3. Click the Network tab — badge disappears.
+
+---
+
+---
+
+## 10. --target-host DNS server
+
+### 10a. No admin — graceful skip
+
+Run **without** elevation:
+```
+node bin/cli.js -p 5173 --target-host localdev.uat.fynd.com
+```
+
+| Check | Expected |
+|-------|----------|
+| Warning line | `! DNS server could not start (run as Administrator to enable cookie-domain support).` |
+| Phone URL | IP-based (`http://192.168.x.x:9001`) — unchanged |
+| No Custom URL line | Correct — DNS is not active |
+| Everything else | Works normally — no regression |
+
+### 10b. With admin — DNS server starts
+
+Run as Administrator (Windows: right-click terminal → Run as administrator):
+```
+node bin/cli.js -p 5173 --target-host localdev.uat.fynd.com
+```
+
+| Check | Expected |
+|-------|----------|
+| `✓ Custom URL` line | `http://localdev.uat.fynd.com:9001` |
+| `✓ DNS server` line | `running on 192.168.x.x:53` |
+| DNS setup box | Printed with Android + iPhone steps, LAN IP interpolated |
+| QR code | Encodes `http://localdev.uat.fynd.com:9001` (not the IP URL) |
+
+### 10c. Phone resolves the custom hostname
+
+Set phone WiFi DNS to the laptop LAN IP. Open `http://localdev.uat.fynd.com:9001` on the phone.
+
+| Check | Expected |
+|-------|----------|
+| App loads | Yes |
+| DevTools connects | Yes — device pill updates normally |
+
+### 10d. Cookie domain works end-to-end
+
+Backend sets `Set-Cookie: session=test; Domain=.uat.fynd.com`.
+
+| Scenario | Expected |
+|----------|----------|
+| Phone on custom URL (`localdev.uat.fynd.com:9001`) | Cookie stored, login works |
+| Phone on IP URL (`192.168.x.x:9001`) | Cookie dropped |
+
+### 10e. Unknown DNS queries still resolve
+
+While devmirror DNS is running, open `https://example.com` in the phone browser.
+
+| Check | Expected |
+|-------|----------|
+| Page loads | Yes — forwarded to 8.8.8.8 transparently |
+| devmirror terminal | No errors |
+
+### 10f. `--target-host` not set — no DNS attempted
+
+```
+node bin/cli.js -p 5173
+```
+
+| Check | Expected |
+|-------|----------|
+| DNS lines in output | None |
+| Behaviour | Identical to pre-0.2-H |
+
+---
+
 ## Definition of done
 
 All rows in all tables above pass without console errors in the DevTools browser

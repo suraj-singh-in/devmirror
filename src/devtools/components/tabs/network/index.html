@@ -1,0 +1,90 @@
+<!-- Filter bar — always visible in Network tab -->
+<div class="network-filter-bar" id="network-filter-bar">
+  <div class="net-pills" role="radiogroup" aria-label="Request type filter">
+    <button class="net-pill" role="radio" aria-checked="true"  data-type="all">All</button>
+    <button class="net-pill" role="radio" aria-checked="false" data-type="fetch">Fetch</button>
+    <button class="net-pill" role="radio" aria-checked="false" data-type="xhr">XHR</button>
+    <button class="net-pill" role="radio" aria-checked="false" data-type="js">JS</button>
+    <button class="net-pill" role="radio" aria-checked="false" data-type="css">CSS</button>
+    <button class="net-pill" role="radio" aria-checked="false" data-type="img">Img</button>
+    <button class="net-pill" role="radio" aria-checked="false" data-type="other">Other</button>
+    <button class="net-pill" role="radio" aria-checked="false" data-type="errors">Errors</button>
+  </div>
+  <div class="filter-bar-right">
+    <button class="preserve-toggle" id="network-preserve-toggle"
+            role="switch" aria-checked="false" aria-label="Preserve requests">
+      <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+      <span class="toggle-label">Preserve requests</span>
+    </button>
+    <button class="network-clear-btn" id="network-clear-btn" aria-label="Clear requests">
+      <i class="ti ti-trash" aria-hidden="true"></i>
+    </button>
+  </div>
+</div>
+
+<!-- Waiting / never-connected empty state -->
+<div class="empty-state" id="empty-network">
+  <i class="ti ti-device-mobile-off" aria-hidden="true"></i>
+  <div class="empty-heading">Waiting for phone</div>
+  <div class="empty-body">Scan the QR code in your terminal to connect</div>
+</div>
+
+<!-- Two-pane layout (shown when connected) -->
+<div class="network-pane" id="network-pane" hidden>
+
+  <!-- Sidebar: resizable via drag handle -->
+  <aside class="network-sidebar" id="network-sidebar">
+    <div class="network-search-wrap" id="network-search-wrap">
+      <i class="ti ti-search" aria-hidden="true"></i>
+      <input type="search" class="network-search" id="network-search"
+             placeholder="Filter by URL&hellip;" aria-label="Filter by URL"
+             autocomplete="off" spellcheck="false">
+    </div>
+    <div class="network-list" id="network-list" role="list"></div>
+  </aside>
+
+  <!-- Drag handle between sidebar and detail pane -->
+  <div class="net-resizer" id="net-resizer" aria-hidden="true"></div>
+
+  <!-- Detail pane: flex 1 -->
+  <div class="network-detail">
+    <div class="empty-state network-detail-empty" id="empty-network-detail">
+      <i class="ti ti-hand-finger" aria-hidden="true"></i>
+      <div class="empty-heading">Select a request</div>
+      <div class="empty-body">Click any row to see full details</div>
+    </div>
+    <div class="network-detail-view" id="network-detail-view" hidden>
+      <div class="network-detail-header" id="network-detail-header">
+        <div class="network-detail-url" id="network-detail-url"></div>
+        <div class="network-detail-meta" id="network-detail-meta"></div>
+      </div>
+      <div class="network-subtabs" id="network-subtabs" role="tablist" aria-label="Request detail">
+        <button class="network-subtab net-subtab-active" id="net-subtab-req-headers"
+                role="tab" aria-selected="true">Request Headers</button>
+        <button class="network-subtab" id="net-subtab-res-headers"
+                role="tab" aria-selected="false">Response Headers</button>
+        <button class="network-subtab" id="net-subtab-payload"
+                role="tab" aria-selected="false">Payload</button>
+        <button class="network-subtab" id="net-subtab-response"
+                role="tab" aria-selected="false">Response</button>
+        <button class="network-subtab" id="net-subtab-preview"
+                role="tab" aria-selected="false">Preview</button>
+        <button class="network-subtab" id="net-subtab-timing"
+                role="tab" aria-selected="false">Timing</button>
+      </div>
+      <div class="network-detail-search" id="network-detail-search">
+        <i class="ti ti-search" aria-hidden="true"></i>
+        <input type="search" class="network-dsearch-input" id="network-dsearch-input"
+               placeholder="Search headers&hellip;" aria-label="Search detail"
+               autocomplete="off" spellcheck="false">
+        <span class="network-dsearch-count" id="network-dsearch-count" hidden></span>
+        <button class="network-dsearch-clear" id="network-dsearch-clear"
+                aria-label="Clear search" hidden>
+          <i class="ti ti-x" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="network-detail-content" id="network-detail-content"></div>
+    </div>
+  </div>
+
+</div>

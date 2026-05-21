@@ -14,8 +14,8 @@
 <!-- ── TOPBAR ─────────────────────────────────────────────────────────────── -->
 <header class="topbar">
   <div class="topbar-left">
-    <span class="conn-dot" id="logo-dot" data-state="waiting" aria-hidden="true"></span>
     <span class="logo-wordmark">devmirror</span>
+    <span class="conn-dot" id="logo-dot" data-state="waiting" aria-hidden="true"></span>
   </div>
 
   <div class="topbar-center">
@@ -53,6 +53,11 @@
             role="tab" aria-selected="false" aria-controls="panel-touch" tabindex="-1">
       Touch
     </button>
+    <button class="tab" id="tab-network"
+            role="tab" aria-selected="false" aria-controls="panel-network" tabindex="-1">
+      Network
+      <span class="tab-badge tab-badge--network" id="network-badge" aria-hidden="true"></span>
+    </button>
     <button class="tab" id="tab-dom"
             role="tab" aria-selected="false" aria-controls="panel-dom" tabindex="-1">
       DOM
@@ -86,6 +91,8 @@
   <div class="panel" id="panel-console" role="tabpanel" aria-labelledby="tab-console" hidden><!-- __TAB_console__ --></div>
 
   <div class="panel" id="panel-touch" role="tabpanel" aria-labelledby="tab-touch" hidden><!-- __TAB_touch__ --></div>
+
+  <div class="panel" id="panel-network" role="tabpanel" aria-labelledby="tab-network" hidden><!-- __TAB_network__ --></div>
 
   <div class="panel" id="panel-dom" role="tabpanel" aria-labelledby="tab-dom" hidden><!-- __TAB_dom__ --></div>
 
@@ -141,7 +148,7 @@
   var detailMetaEl        = null;
   var detailBodyScrollEl  = null;
 
-  var TAB_IDS = ['device', 'console', 'touch', 'dom', 'camera'];
+  var TAB_IDS = ['device', 'console', 'touch', 'network', 'dom', 'camera'];
 
   var tabEls   = {};
   var panelEls = {};
@@ -171,6 +178,10 @@
     touch: {
       waiting:   ['ti-device-mobile-off', 'Waiting for phone',  'Scan the QR code in your terminal to connect'],
       connected: null, // touch-content + touch-no-data overlay handle the connected state
+    },
+    network: {
+      waiting:   ['ti-device-mobile-off', 'Waiting for phone',  'Scan the QR code in your terminal to connect'],
+      connected: null, // network-pane handles the connected state internally
     },
     dom: {
       waiting:   ['ti-device-mobile-off', 'Waiting for phone',  'Scan the QR code in your terminal to connect'],
@@ -324,6 +335,40 @@
   var domResizerDragging   = false;
   var domResizerStartX     = 0;
   var domResizerStartW     = 0;
+
+  // ── Network tab state ─────────────────────────────────────────────────────
+  var networkUIReady      = false;
+  var networkRequests     = [];
+  var networkCapped       = false;
+  var networkPreserve     = false;
+  var networkFilter       = 'all';
+  var networkSearch       = '';
+  var networkSelectedId   = null;
+  var networkUnread       = 0;
+  var networkDetailSubTab = 'request-headers';
+  var networkDetailSearch = '';
+  var NETWORK_CAP         = 1000;
+
+  // Network DOM refs (populated by networkInitUI)
+  var networkPaneEl       = null;
+  var networkSidebarEl    = null;
+  var netResizerEl        = null;
+  var netResizerDragging  = false;
+  var netResizerStartX    = 0;
+  var netResizerStartW    = 0;
+  var networkListEl       = null;
+  var networkSearchEl     = null;
+  var networkPreserveEl   = null;
+  var networkClearBtnEl   = null;
+  var netDetailEmptyEl    = null;
+  var netDetailViewEl     = null;
+  var netDetailUrlEl      = null;
+  var netDetailMetaEl     = null;
+  var netDetailSearchEl   = null;
+  var netDsearchInputEl   = null;
+  var netDsearchCountEl   = null;
+  var netDsearchClearEl   = null;
+  var netDetailContentEl  = null;
 
   // ── Console helpers ───────────────────────────────────────────────────────
 
@@ -660,12 +705,12 @@
       consoleClearBtnEl.addEventListener('click', function() { consoleClearLogs(); });
     }
 
-    document.querySelectorAll('.filter-pill').forEach(function(pill) {
+    document.querySelectorAll('#console-filter-bar .filter-pill').forEach(function(pill) {
       pill.addEventListener('click', function() {
         var level = pill.getAttribute('data-level');
         if (consoleFilter === level) { return; }
         consoleFilter = level;
-        document.querySelectorAll('.filter-pill').forEach(function(p) {
+        document.querySelectorAll('#console-filter-bar .filter-pill').forEach(function(p) {
           p.setAttribute('aria-checked', String(p.getAttribute('data-level') === level));
         });
         consoleRenderList();
@@ -1219,6 +1264,728 @@
     }
   }
 
+  // ── Network tab helpers ───────────────────────────────────────────────────
+
+  function networkFormatSize(bytes) {
+    if (!bytes) { return '—'; }
+    if (bytes < 1024) { return bytes + ' B'; }
+    if (bytes < 1024 * 1024) { return (bytes / 1024).toFixed(1) + ' kB'; }
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function networkDetectResourceType(contentType, url) {
+    if (!contentType) {
+      var p = url.split('?')[0].toLowerCase();
+      if (p.slice(-3) === '.js' || p.slice(-4) === '.mjs') { return 'js'; }
+      if (p.slice(-4) === '.css') { return 'css'; }
+      if (/\.(png|jpg|jpeg|gif|webp|svg|ico)$/.test(p)) { return 'img'; }
+      return 'other';
+    }
+    var ct = contentType.toLowerCase();
+    if (ct.indexOf('application/json') !== -1 || ct.indexOf('text/plain') !== -1) { return 'fetch'; }
+    if (ct.indexOf('javascript') !== -1) { return 'js'; }
+    if (ct.indexOf('css') !== -1) { return 'css'; }
+    if (ct.indexOf('image/') !== -1) { return 'img'; }
+    if (ct.indexOf('text/html') !== -1) { return 'other'; }
+    return 'other';
+  }
+
+  function networkPrettifyJson(text) {
+    try { return JSON.stringify(JSON.parse(text), null, 2); } catch (e) { return text; }
+  }
+
+  function networkGetPathFromUrl(url) {
+    try { var u = new URL(url); return u.pathname + u.search; } catch (e) { return url; }
+  }
+
+  function networkGetFilteredRequests() {
+    return networkRequests.filter(function(req) {
+      if (networkFilter === 'errors') {
+        if (req.state !== 'error' && !(req.status >= 400)) { return false; }
+      } else if (networkFilter !== 'all') {
+        if (req.resourceType !== networkFilter) { return false; }
+      }
+      if (networkSearch && req.url.toLowerCase().indexOf(networkSearch.toLowerCase()) === -1) { return false; }
+      return true;
+    });
+  }
+
+  function networkUpdateBadge() {
+    var badge = document.getElementById('network-badge');
+    if (!badge) { return; }
+    var tabEl = document.getElementById('tab-network');
+    if (networkUnread === 0) {
+      badge.classList.remove('visible');
+      badge.textContent = '';
+      if (tabEl) { tabEl.setAttribute('aria-label', 'Network'); }
+    } else {
+      var label = networkUnread > 99 ? '99+' : String(networkUnread);
+      badge.textContent = label;
+      badge.classList.add('visible');
+      if (tabEl) {
+        tabEl.setAttribute('aria-label', 'Network, ' + networkUnread +
+          ' new request' + (networkUnread === 1 ? '' : 's'));
+      }
+    }
+  }
+
+  function networkHighlightText(text, query) {
+    if (!query) { return document.createTextNode(text); }
+    var frag = document.createDocumentFragment();
+    var lower = text.toLowerCase();
+    var lowerQ = query.toLowerCase();
+    var last = 0;
+    var idx;
+    while ((idx = lower.indexOf(lowerQ, last)) !== -1) {
+      if (idx > last) { frag.appendChild(document.createTextNode(text.slice(last, idx))); }
+      var mark = document.createElement('mark');
+      mark.style.cssText = 'background:#FAEEDA;color:#633806;border-radius:2px';
+      mark.textContent = text.slice(idx, idx + query.length);
+      frag.appendChild(mark);
+      last = idx + query.length;
+    }
+    if (last < text.length) { frag.appendChild(document.createTextNode(text.slice(last))); }
+    return frag;
+  }
+
+  function networkMakeRowEl(req) {
+    var row = document.createElement('div');
+    row.className = 'net-row';
+    row.setAttribute('role', 'listitem');
+    row.setAttribute('tabindex', '0');
+    row.setAttribute('data-id', req.requestId);
+    row.setAttribute('aria-selected', networkSelectedId === req.requestId ? 'true' : 'false');
+
+    var dot = document.createElement('span');
+    dot.className = 'net-dot';
+    dot.setAttribute('aria-hidden', 'true');
+    dot.style.background = req.state === 'error' ? '#E24B4A' : req.state === 'pending' ? '#BA7517' : '#639922';
+    row.appendChild(dot);
+
+    var badge = document.createElement('span');
+    badge.className = 'net-method net-method--' + req.method.toLowerCase();
+    badge.textContent = req.method;
+    row.appendChild(badge);
+
+    var urlCol = document.createElement('div');
+    urlCol.className = 'net-url-col';
+    var urlEl = document.createElement('span');
+    urlEl.className = 'net-url';
+    urlEl.textContent = networkGetPathFromUrl(req.url);
+    urlCol.appendChild(urlEl);
+    row.appendChild(urlCol);
+
+    var meta = document.createElement('div');
+    meta.className = 'net-meta';
+    var dur = document.createElement('div');
+    dur.className = 'net-duration';
+    dur.textContent = req.duration !== null ? req.duration + 'ms' : '—';
+    var sz = document.createElement('div');
+    sz.className = 'net-size';
+    if (req.state === 'pending') {
+      sz.textContent = 'pending';
+      sz.style.color = '#BA7517';
+    } else {
+      sz.textContent = req.size ? networkFormatSize(req.size) : '—';
+    }
+    meta.appendChild(dur);
+    meta.appendChild(sz);
+    row.appendChild(meta);
+
+    row.addEventListener('click', function() { networkSelectRequest(req.requestId); });
+    row.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); networkSelectRequest(req.requestId); }
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && networkListEl) {
+        e.preventDefault();
+        var rows = Array.prototype.slice.call(networkListEl.querySelectorAll('.net-row'));
+        var idx  = rows.indexOf(row);
+        var next = e.key === 'ArrowDown' ? rows[idx + 1] : rows[idx - 1];
+        if (next) { next.focus(); }
+      }
+    });
+    return row;
+  }
+
+  function networkRenderList() {
+    if (!networkListEl) { return; }
+    networkListEl.innerHTML = '';
+    if (networkCapped) {
+      var notice = document.createElement('div');
+      notice.className = 'net-cap-notice';
+      notice.textContent = 'Oldest requests have been removed (limit: 1000)';
+      networkListEl.appendChild(notice);
+    }
+    if (networkRequests.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'net-list-empty';
+      empty.innerHTML = '<i class="ti ti-network" aria-hidden="true"></i>' +
+        '<div class="net-list-empty-heading">No requests yet</div>' +
+        '<div class="net-list-empty-body">Network activity from the phone will appear here</div>';
+      networkListEl.appendChild(empty);
+      return;
+    }
+    var filtered = networkGetFilteredRequests();
+    if (filtered.length === 0) {
+      var empty2 = document.createElement('div');
+      empty2.className = 'net-list-empty';
+      empty2.innerHTML = '<i class="ti ti-filter-off" aria-hidden="true"></i>' +
+        '<div class="net-list-empty-heading">No matching requests</div>' +
+        '<div class="net-list-empty-body">Try a different filter or clear your search</div>';
+      networkListEl.appendChild(empty2);
+      return;
+    }
+    var frag = document.createDocumentFragment();
+    filtered.forEach(function(req) { frag.appendChild(networkMakeRowEl(req)); });
+    networkListEl.appendChild(frag);
+  }
+
+  function networkRenderHeadersTable(headers, sectionLabel) {
+    var wrap = document.createDocumentFragment();
+    var lbl = document.createElement('div');
+    lbl.className = 'net-section-label';
+    lbl.textContent = sectionLabel;
+    wrap.appendChild(lbl);
+    var keys = Object.keys(headers || {});
+    if (!keys.length) {
+      var hint = document.createElement('div');
+      hint.className = 'net-empty-hint';
+      hint.textContent = 'No headers';
+      wrap.appendChild(hint);
+      return { frag: wrap, visible: 0, total: 0 };
+    }
+    var table = document.createElement('table');
+    table.className = 'net-header-table';
+    var tbody = document.createElement('tbody');
+    var q = networkDetailSearch.toLowerCase();
+    var visible = 0;
+    keys.forEach(function(key) {
+      var val = String(headers[key] || '');
+      var matches = !q || key.toLowerCase().indexOf(q) !== -1 || val.toLowerCase().indexOf(q) !== -1;
+      var tr = document.createElement('tr');
+      if (!matches) { tr.style.display = 'none'; } else { visible++; }
+      var tdK = document.createElement('td');
+      tdK.className = 'net-header-key';
+      tdK.appendChild(q ? networkHighlightText(key, networkDetailSearch) : document.createTextNode(key));
+      var tdV = document.createElement('td');
+      tdV.className = 'net-header-val';
+      tdV.appendChild(q ? networkHighlightText(val, networkDetailSearch) : document.createTextNode(val));
+      tr.appendChild(tdK);
+      tr.appendChild(tdV);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    return { frag: wrap, visible: visible, total: keys.length };
+  }
+
+  function networkRenderCodeBlock(text, prettify) {
+    var displayText = prettify ? networkPrettifyJson(text) : text;
+    var lines = displayText.split('\n');
+    var container = document.createElement('div');
+    container.className = 'net-code-block';
+    var q = networkDetailSearch;
+    if (!q) { container.textContent = displayText; return { el: container, visible: lines.length, total: lines.length }; }
+    var lowerQ = q.toLowerCase();
+    var visible = 0;
+    var frag = document.createDocumentFragment();
+    lines.forEach(function(line, i) {
+      var matches = line.toLowerCase().indexOf(lowerQ) !== -1;
+      if (!matches) {
+        var hidden = document.createElement('span');
+        hidden.style.display = 'none';
+        hidden.textContent = line + (i < lines.length - 1 ? '\n' : '');
+        frag.appendChild(hidden);
+      } else {
+        visible++;
+        var span = document.createElement('span');
+        span.appendChild(networkHighlightText(line, q));
+        if (i < lines.length - 1) { span.appendChild(document.createTextNode('\n')); }
+        frag.appendChild(span);
+      }
+    });
+    container.appendChild(frag);
+    return { el: container, visible: visible, total: lines.length };
+  }
+
+  function networkUpdateDetailSearchUI(visible, total, placeholder) {
+    if (!netDsearchInputEl) { return; }
+    if (placeholder !== undefined) { netDsearchInputEl.placeholder = placeholder; }
+    var hasVal = netDsearchInputEl.value.length > 0;
+    if (netDsearchClearEl) { netDsearchClearEl.hidden = !hasVal; }
+    if (netDsearchCountEl) {
+      if (hasVal && typeof visible === 'number') {
+        netDsearchCountEl.textContent = visible + ' of ' + total + ' result' + (total === 1 ? '' : 's');
+        netDsearchCountEl.hidden = false;
+      } else {
+        netDsearchCountEl.hidden = true;
+      }
+    }
+  }
+
+  function networkRenderDetailContent(req) {
+    if (!netDetailContentEl) { return; }
+    netDetailContentEl.innerHTML = '';
+    if (!req) { return; }
+    var subTab = networkDetailSubTab;
+
+    if (subTab === 'request-headers') {
+      var rh = networkRenderHeadersTable(req.requestHeaders || {}, 'REQUEST HEADERS');
+      netDetailContentEl.appendChild(rh.frag);
+      networkUpdateDetailSearchUI(rh.visible, rh.total, 'Search headers…');
+      return;
+    }
+    if (subTab === 'response-headers') {
+      var resh = networkRenderHeadersTable(req.responseHeaders || {}, 'RESPONSE HEADERS');
+      netDetailContentEl.appendChild(resh.frag);
+      networkUpdateDetailSearchUI(resh.visible, resh.total, 'Search headers…');
+      return;
+    }
+    if (subTab === 'payload') {
+      var secLbl = document.createElement('div');
+      secLbl.className = 'net-section-label';
+      secLbl.textContent = 'REQUEST BODY';
+      netDetailContentEl.appendChild(secLbl);
+      if (!req.requestBody) {
+        var noBody = document.createElement('div');
+        noBody.className = 'net-empty-hint';
+        noBody.textContent = 'No request body';
+        netDetailContentEl.appendChild(noBody);
+        networkUpdateDetailSearchUI(0, 0, 'Search payload…');
+        return;
+      }
+      if (req.requestBody.type === 'formdata') {
+        var fdResult = networkRenderHeadersTable(req.requestBody.content || {}, '');
+        netDetailContentEl.appendChild(fdResult.frag);
+        networkUpdateDetailSearchUI(fdResult.visible, fdResult.total, 'Search payload…');
+      } else if (req.requestBody.type === 'binary') {
+        var binHint = document.createElement('div');
+        binHint.className = 'net-empty-hint';
+        binHint.textContent = '[Binary data — not displayable]';
+        netDetailContentEl.appendChild(binHint);
+        networkUpdateDetailSearchUI(0, 0, 'Search payload…');
+      } else {
+        var plCode = networkRenderCodeBlock(req.requestBody.content || '', true);
+        netDetailContentEl.appendChild(plCode.el);
+        networkUpdateDetailSearchUI(plCode.visible, plCode.total, 'Search payload…');
+      }
+      return;
+    }
+    if (subTab === 'response') {
+      var ct = (req.contentType || '').toLowerCase();
+      if (req.bodyTruncated) {
+        var truncNotice = document.createElement('div');
+        truncNotice.className = 'net-truncated-notice';
+        truncNotice.textContent = '! Response truncated at 100KB. Full body not captured.';
+        netDetailContentEl.appendChild(truncNotice);
+      }
+      if (ct.indexOf('image/') !== -1) {
+        var imgHint = document.createElement('div');
+        imgHint.className = 'net-empty-hint';
+        imgHint.textContent = 'Image response — see Preview tab';
+        netDetailContentEl.appendChild(imgHint);
+        networkUpdateDetailSearchUI(0, 0, 'Search response…');
+        return;
+      }
+      var isJson = ct.indexOf('application/json') !== -1 || ct.indexOf('text/json') !== -1;
+      var resCode = networkRenderCodeBlock(req.body || '', isJson);
+      netDetailContentEl.appendChild(resCode.el);
+      networkUpdateDetailSearchUI(resCode.visible, resCode.total, 'Search response…');
+      return;
+    }
+    if (subTab === 'preview') {
+      var pct = (req.contentType || '').toLowerCase();
+      if (pct.indexOf('image/') !== -1) {
+        var imgEl = document.createElement('img');
+        imgEl.src = req.url;
+        imgEl.alt = '';
+        imgEl.style.cssText = 'max-width:100%;border-radius:6px;display:block;';
+        netDetailContentEl.appendChild(imgEl);
+        networkUpdateDetailSearchUI(null, null, '');
+        return;
+      }
+      if (pct.indexOf('text/html') !== -1) {
+        var iframe = document.createElement('iframe');
+        iframe.setAttribute('srcdoc', req.body || '');
+        iframe.setAttribute('sandbox', 'allow-same-origin');
+        iframe.style.cssText = 'width:100%;min-height:200px;border:none;border-radius:6px;';
+        netDetailContentEl.appendChild(iframe);
+        networkUpdateDetailSearchUI(null, null, '');
+        return;
+      }
+      var isJson2 = pct.indexOf('application/json') !== -1 || pct.indexOf('text/json') !== -1;
+      var prevCode = networkRenderCodeBlock(req.body || '', isJson2);
+      netDetailContentEl.appendChild(prevCode.el);
+      networkUpdateDetailSearchUI(prevCode.visible, prevCode.total, 'Search preview…');
+      return;
+    }
+    if (subTab === 'timing') {
+      networkUpdateDetailSearchUI(null, null, '');
+      if (!req.timing) {
+        var timEmpty = document.createElement('div');
+        timEmpty.className = 'net-timing-empty';
+        timEmpty.innerHTML = '<i class="ti ti-clock" aria-hidden="true"></i>' +
+          '<div class="net-empty-hint-heading">Timing data not available</div>' +
+          '<div class="net-empty-hint-body">PerformanceResourceTiming API returned no data for this request</div>';
+        netDetailContentEl.appendChild(timEmpty);
+        return;
+      }
+      var timing = req.timing;
+      var total = timing.total || 1;
+      var phases = [
+        { label: 'DNS LOOKUP',     value: timing.dns,      color: '#378ADD' },
+        { label: 'CONNECTING',     value: timing.connect,  color: '#1D9E75' },
+        { label: 'SSL / TLS',      value: timing.ssl,      color: '#5DCAA5' },
+        { label: 'WAITING (TTFB)', value: timing.ttfb,     color: '#BA7517' },
+        { label: 'RECEIVING',      value: timing.download, color: '#639922' },
+      ];
+      var phasesDiv = document.createElement('div');
+      phasesDiv.className = 'net-timing-phases';
+      phases.forEach(function(ph) {
+        var row = document.createElement('div');
+        row.className = 'net-timing-row';
+        var lbl = document.createElement('div');
+        lbl.className = 'net-timing-label';
+        lbl.textContent = ph.label;
+        var track = document.createElement('div');
+        track.className = 'net-timing-track';
+        var fill = document.createElement('div');
+        fill.className = 'net-timing-fill';
+        fill.style.background = ph.color;
+        fill.style.width = (Math.max(0, ph.value || 0) / total * 100).toFixed(1) + '%';
+        track.appendChild(fill);
+        var val = document.createElement('div');
+        val.className = 'net-timing-value';
+        val.textContent = (ph.value || 0) + 'ms';
+        row.appendChild(lbl);
+        row.appendChild(track);
+        row.appendChild(val);
+        phasesDiv.appendChild(row);
+      });
+      netDetailContentEl.appendChild(phasesDiv);
+      var totDiv = document.createElement('div');
+      totDiv.className = 'net-timing-total';
+      var totLbl = document.createElement('div');
+      totLbl.className = 'net-section-label';
+      totLbl.textContent = 'TOTAL';
+      var totVal = document.createElement('div');
+      totVal.className = 'net-timing-total-val';
+      var totNum = document.createElement('span');
+      totNum.className = 'net-timing-total-num';
+      totNum.textContent = timing.total;
+      var totUnit = document.createElement('span');
+      totUnit.className = 'net-timing-total-unit';
+      totUnit.textContent = 'ms';
+      totVal.appendChild(totNum);
+      totVal.appendChild(totUnit);
+      totDiv.appendChild(totLbl);
+      totDiv.appendChild(totVal);
+      netDetailContentEl.appendChild(totDiv);
+      return;
+    }
+  }
+
+  function networkRenderDetail(req) {
+    if (!netDetailEmptyEl) { netDetailEmptyEl  = document.getElementById('empty-network-detail'); }
+    if (!netDetailViewEl)  { netDetailViewEl   = document.getElementById('network-detail-view'); }
+    if (!netDetailUrlEl)   { netDetailUrlEl    = document.getElementById('network-detail-url'); }
+    if (!netDetailMetaEl)  { netDetailMetaEl   = document.getElementById('network-detail-meta'); }
+    if (!netDetailContentEl) { netDetailContentEl = document.getElementById('network-detail-content'); }
+    if (!netDetailSearchEl)  { netDetailSearchEl  = document.getElementById('network-detail-search'); }
+    if (!netDsearchInputEl)  { netDsearchInputEl  = document.getElementById('network-dsearch-input'); }
+    if (!netDsearchCountEl)  { netDsearchCountEl  = document.getElementById('network-dsearch-count'); }
+    if (!netDsearchClearEl)  { netDsearchClearEl  = document.getElementById('network-dsearch-clear'); }
+
+    if (!req) {
+      if (netDetailEmptyEl) { netDetailEmptyEl.removeAttribute('hidden'); }
+      if (netDetailViewEl)  { netDetailViewEl.setAttribute('hidden', ''); }
+      return;
+    }
+    if (netDetailEmptyEl) { netDetailEmptyEl.setAttribute('hidden', ''); }
+    if (!netDetailViewEl) { return; }
+    netDetailViewEl.removeAttribute('hidden');
+
+    if (netDetailUrlEl) { netDetailUrlEl.textContent = req.method + ' ' + req.url; }
+
+    if (netDetailMetaEl) {
+      netDetailMetaEl.innerHTML = '';
+      var sc = document.createElement('span');
+      sc.className = 'net-meta-chip';
+      if (req.state === 'pending') {
+        sc.classList.add('net-meta-chip--pending');
+        sc.innerHTML = '<i class="ti ti-clock" aria-hidden="true"></i>— Pending';
+      } else if (req.state === 'error') {
+        sc.classList.add('net-meta-chip--error');
+        sc.innerHTML = '<i class="ti ti-x" aria-hidden="true"></i>' + (req.status || 'Error') + (req.statusText ? ' ' + req.statusText : '');
+      } else {
+        sc.classList.add('net-meta-chip--ok');
+        sc.innerHTML = '<i class="ti ti-check" aria-hidden="true"></i>' + req.status + ' ' + req.statusText;
+      }
+      netDetailMetaEl.appendChild(sc);
+
+      var dc = document.createElement('span');
+      dc.className = 'net-meta-chip';
+      dc.innerHTML = '<i class="ti ti-clock" aria-hidden="true"></i>' + (req.duration !== null ? req.duration + 'ms' : '—');
+      netDetailMetaEl.appendChild(dc);
+
+      var szc = document.createElement('span');
+      szc.className = 'net-meta-chip';
+      szc.innerHTML = '<i class="ti ti-database" aria-hidden="true"></i>' + (req.size ? networkFormatSize(req.size) : '—');
+      netDetailMetaEl.appendChild(szc);
+
+      if (req.contentType) {
+        var ctc = document.createElement('span');
+        ctc.className = 'net-meta-chip';
+        ctc.innerHTML = '<i class="ti ti-code" aria-hidden="true"></i>' + req.contentType.split(';')[0].split('/').pop();
+        netDetailMetaEl.appendChild(ctc);
+      }
+    }
+
+    // Payload tab: hide for requests without a body
+    var payloadBtn = document.getElementById('net-subtab-payload');
+    if (payloadBtn) {
+      payloadBtn.style.display = req.requestBody ? '' : 'none';
+      if (networkDetailSubTab === 'payload' && !req.requestBody) { networkDetailSubTab = 'request-headers'; }
+    }
+
+    // Sync active sub-tab visuals
+    var subTabMap = {
+      'request-headers': 'net-subtab-req-headers',
+      'response-headers': 'net-subtab-res-headers',
+      'payload': 'net-subtab-payload',
+      'response': 'net-subtab-response',
+      'preview': 'net-subtab-preview',
+      'timing': 'net-subtab-timing',
+    };
+    Object.keys(subTabMap).forEach(function(k) {
+      var btn = document.getElementById(subTabMap[k]);
+      if (!btn) { return; }
+      var isActive = k === networkDetailSubTab;
+      btn.classList.toggle('net-subtab-active', isActive);
+      btn.setAttribute('aria-selected', String(isActive));
+    });
+
+    // Hide search bar on timing, image preview, html preview
+    var hideSearch = networkDetailSubTab === 'timing';
+    if (!hideSearch && networkDetailSubTab === 'preview') {
+      var pct2 = (req.contentType || '').toLowerCase();
+      if (pct2.indexOf('image/') !== -1 || pct2.indexOf('text/html') !== -1) { hideSearch = true; }
+    }
+    if (netDetailSearchEl) { netDetailSearchEl.hidden = hideSearch; }
+
+    networkRenderDetailContent(req);
+  }
+
+  function networkSelectRequest(id) {
+    networkSelectedId   = id;
+    networkDetailSearch = '';
+    if (netDsearchInputEl) { netDsearchInputEl.value = ''; }
+    if (networkListEl) {
+      var rows = networkListEl.querySelectorAll('.net-row');
+      rows.forEach(function(row) {
+        row.setAttribute('aria-selected', row.getAttribute('data-id') === id ? 'true' : 'false');
+      });
+    }
+    var req = null;
+    for (var i = 0; i < networkRequests.length; i++) {
+      if (networkRequests[i].requestId === id) { req = networkRequests[i]; break; }
+    }
+    networkRenderDetail(req);
+  }
+
+  function networkClearRequests() {
+    networkRequests   = [];
+    networkCapped     = false;
+    networkSelectedId = null;
+    networkUnread     = 0;
+    networkUpdateBadge();
+    networkRenderList();
+    networkRenderDetail(null);
+  }
+
+  function networkAddRequest(msg) {
+    networkRequests.push({
+      requestId: msg.requestId, method: msg.method || 'GET', url: msg.url || '',
+      status: null, statusText: '', resourceType: msg.initiator || 'fetch',
+      requestHeaders: msg.requestHeaders || {}, requestBody: msg.requestBody || null,
+      responseHeaders: {}, body: '', bodyTruncated: false, contentType: '',
+      size: 0, duration: null, timing: null, error: null,
+      startedAt: Date.now(), state: 'pending',
+    });
+    if (networkRequests.length > NETWORK_CAP) { networkRequests.shift(); networkCapped = true; }
+    if (activeTab !== 'network') { networkUnread++; networkUpdateBadge(); }
+    networkRenderList();
+  }
+
+  function networkUpdateRequest(msg) {
+    var req = null;
+    for (var i = 0; i < networkRequests.length; i++) {
+      if (networkRequests[i].requestId === msg.requestId) { req = networkRequests[i]; break; }
+    }
+    if (!req) { return; }
+    req.status          = msg.status;
+    req.statusText      = msg.statusText || '';
+    req.responseHeaders = msg.responseHeaders || {};
+    req.body            = msg.body || '';
+    req.bodyTruncated   = !!msg.bodyTruncated;
+    req.contentType     = msg.contentType || '';
+    req.resourceType    = networkDetectResourceType(msg.contentType, req.url);
+    req.size            = msg.size || 0;
+    req.duration        = msg.duration;
+    req.timing          = msg.timing || null;
+    req.state           = (typeof msg.status === 'number' && msg.status >= 400) ? 'error' : 'done';
+    networkRenderList();
+    if (req.requestId === networkSelectedId) { networkRenderDetail(req); }
+  }
+
+  function networkErrorRequest(msg) {
+    var req = null;
+    for (var i = 0; i < networkRequests.length; i++) {
+      if (networkRequests[i].requestId === msg.requestId) { req = networkRequests[i]; break; }
+    }
+    if (!req) { return; }
+    req.error = msg.error; req.duration = msg.duration; req.state = 'error';
+    networkRenderList();
+    if (req.requestId === networkSelectedId) { networkRenderDetail(req); }
+  }
+
+  function networkInitUI() {
+    if (networkUIReady) { return; }
+    networkUIReady = true;
+
+    networkPaneEl     = document.getElementById('network-pane');
+    networkListEl     = document.getElementById('network-list');
+    networkSearchEl   = document.getElementById('network-search');
+    networkPreserveEl = document.getElementById('network-preserve-toggle');
+    networkClearBtnEl = document.getElementById('network-clear-btn');
+    netDetailEmptyEl  = document.getElementById('empty-network-detail');
+    netDetailViewEl   = document.getElementById('network-detail-view');
+    netDetailUrlEl    = document.getElementById('network-detail-url');
+    netDetailMetaEl   = document.getElementById('network-detail-meta');
+    netDetailContentEl = document.getElementById('network-detail-content');
+    netDetailSearchEl  = document.getElementById('network-detail-search');
+    netDsearchInputEl  = document.getElementById('network-dsearch-input');
+    netDsearchCountEl  = document.getElementById('network-dsearch-count');
+    netDsearchClearEl  = document.getElementById('network-dsearch-clear');
+
+    if (networkSearchEl) {
+      networkSearchEl.addEventListener('input', function() {
+        networkSearch = networkSearchEl.value;
+        networkRenderList();
+      });
+    }
+    if (networkPreserveEl) {
+      networkPreserveEl.addEventListener('click', function() {
+        networkPreserve = !networkPreserve;
+        networkPreserveEl.setAttribute('aria-checked', String(networkPreserve));
+      });
+    }
+    if (networkClearBtnEl) {
+      networkClearBtnEl.addEventListener('click', function() { networkClearRequests(); });
+    }
+
+    // Filter pills
+    document.querySelectorAll('#network-filter-bar .net-pill').forEach(function(pill) {
+      pill.addEventListener('click', function() {
+        var type = pill.getAttribute('data-type');
+        if (networkFilter === type) { return; }
+        networkFilter = type;
+        document.querySelectorAll('#network-filter-bar .net-pill').forEach(function(p) {
+          p.setAttribute('aria-checked', String(p.getAttribute('data-type') === type));
+        });
+        networkRenderList();
+      });
+      pill.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          var pills = Array.prototype.slice.call(document.querySelectorAll('#network-filter-bar .net-pill'));
+          var idx   = pills.indexOf(pill);
+          var next  = e.key === 'ArrowRight' ? pills[(idx + 1) % pills.length] : pills[(idx - 1 + pills.length) % pills.length];
+          if (next) { next.click(); next.focus(); }
+        }
+      });
+    });
+
+    // Sub-tab buttons
+    var subTabMap = [
+      { id: 'net-subtab-req-headers',  key: 'request-headers' },
+      { id: 'net-subtab-res-headers',  key: 'response-headers' },
+      { id: 'net-subtab-payload',      key: 'payload' },
+      { id: 'net-subtab-response',     key: 'response' },
+      { id: 'net-subtab-preview',      key: 'preview' },
+      { id: 'net-subtab-timing',       key: 'timing' },
+    ];
+    subTabMap.forEach(function(entry) {
+      var btn = document.getElementById(entry.id);
+      if (!btn) { return; }
+      btn.addEventListener('click', function() {
+        networkDetailSubTab = entry.key;
+        networkDetailSearch = '';
+        if (netDsearchInputEl) { netDsearchInputEl.value = ''; }
+        if (netDsearchClearEl) { netDsearchClearEl.hidden = true; }
+        if (netDsearchCountEl) { netDsearchCountEl.hidden = true; }
+        var req = null;
+        for (var ri = 0; ri < networkRequests.length; ri++) {
+          if (networkRequests[ri].requestId === networkSelectedId) { req = networkRequests[ri]; break; }
+        }
+        if (req) { networkRenderDetail(req); }
+      });
+    });
+
+    // Detail search input
+    if (netDsearchInputEl) {
+      netDsearchInputEl.addEventListener('input', function() {
+        networkDetailSearch = netDsearchInputEl.value;
+        if (netDsearchClearEl) { netDsearchClearEl.hidden = !networkDetailSearch; }
+        var req = null;
+        for (var ri = 0; ri < networkRequests.length; ri++) {
+          if (networkRequests[ri].requestId === networkSelectedId) { req = networkRequests[ri]; break; }
+        }
+        if (req) { networkRenderDetailContent(req); }
+      });
+    }
+    if (netDsearchClearEl) {
+      netDsearchClearEl.addEventListener('click', function() {
+        networkDetailSearch = '';
+        if (netDsearchInputEl) { netDsearchInputEl.value = ''; }
+        netDsearchClearEl.hidden = true;
+        if (netDsearchCountEl) { netDsearchCountEl.hidden = true; }
+        var req = null;
+        for (var ri = 0; ri < networkRequests.length; ri++) {
+          if (networkRequests[ri].requestId === networkSelectedId) { req = networkRequests[ri]; break; }
+        }
+        if (req) { networkRenderDetailContent(req); }
+      });
+    }
+
+    // Sidebar resize — mousedown on handle, move/up on document
+    networkSidebarEl = document.getElementById('network-sidebar');
+    netResizerEl     = document.getElementById('net-resizer');
+    if (netResizerEl && networkSidebarEl) {
+      netResizerEl.addEventListener('mousedown', function(e) {
+        netResizerDragging = true;
+        netResizerStartX   = e.clientX;
+        netResizerStartW   = networkSidebarEl.offsetWidth;
+        netResizerEl.classList.add('net-resizer-dragging');
+        document.body.style.cursor     = 'col-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+      });
+    }
+    document.addEventListener('mousemove', function(e) {
+      if (!netResizerDragging || !networkSidebarEl) { return; }
+      var dx   = e.clientX - netResizerStartX;
+      var newW = Math.max(160, Math.min(520, netResizerStartW + dx));
+      networkSidebarEl.style.width = newW + 'px';
+    });
+    document.addEventListener('mouseup', function() {
+      if (!netResizerDragging) { return; }
+      netResizerDragging = false;
+      if (netResizerEl) { netResizerEl.classList.remove('net-resizer-dragging'); }
+      document.body.style.cursor     = '';
+      document.body.style.userSelect = '';
+    });
+  }
+
   // Show loading state and arm the 10-second timeout.
   function domShowLoading() {
     if (domSidebarEmptyEl) { domSidebarEmptyEl.setAttribute('hidden', ''); }
@@ -1449,6 +2216,16 @@
       if (domLoadingTimer !== null) { clearTimeout(domLoadingTimer); domLoadingTimer = null; }
     }
 
+    // Network pane: show on connect, keep on disconnect, hide on waiting
+    if (!networkPaneEl) { networkPaneEl = document.getElementById('network-pane'); }
+    if (newState === 'connected') {
+      networkInitUI();
+      if (networkPaneEl) { networkPaneEl.removeAttribute('hidden'); }
+      networkRenderList();
+    } else if (newState === 'waiting') {
+      if (networkPaneEl) { networkPaneEl.setAttribute('hidden', ''); }
+    }
+
     // ARIA live announcement (§13)
     // pendingPhoneAnnounce defers 'Phone connected' until real dimensions arrive,
     // so screen readers never hear 'Phone connected: Waiting for device…'.
@@ -1487,6 +2264,11 @@
     if (tabId === 'console') {
       consoleUnread = 0;
       consoleUpdateBadge();
+    }
+    // Reset Network unread badge when Network tab is activated
+    if (tabId === 'network') {
+      networkUnread = 0;
+      networkUpdateBadge();
     }
     // Re-run touchResize when switching to Touch — the panel was display:none when
     // the canvas was first sized, so offsetWidth/offsetHeight were 0 at that point.
@@ -1541,7 +2323,10 @@
       var msg;
       try { msg = JSON.parse(event.data); } catch (e) { return; }
       if (msg.type === 'phone_connected' || msg.type === 'phone_reconnected') {
-        if (msg.type === 'phone_reconnected' && !preserveLogs) { consoleClearLogs(); }
+        if (msg.type === 'phone_reconnected') {
+          if (!preserveLogs)    { consoleClearLogs(); }
+          if (!networkPreserve) { networkClearRequests(); }
+        }
         applyState('connected');
       } else if (msg.type === 'dimensions') {
         lastDevice = msg;
@@ -1556,6 +2341,12 @@
         domHandleSnapshot(msg.html);
       } else if (msg.type === 'styles') {
         domHandleStyles(msg);
+      } else if (msg.type === 'network_request_start') {
+        networkAddRequest(msg);
+      } else if (msg.type === 'network_request_done') {
+        networkUpdateRequest(msg);
+      } else if (msg.type === 'network_request_error') {
+        networkErrorRequest(msg);
       }
     };
 

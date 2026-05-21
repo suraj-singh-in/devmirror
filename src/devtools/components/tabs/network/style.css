@@ -1,0 +1,517 @@
+/* ── Network tab layout ─────────────────────────────────────────────────────── */
+#panel-network {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Network filter bar ─────────────────────────────────────────────────────── */
+.network-filter-bar {
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0 12px;
+  background: var(--color-background-secondary);
+  border-bottom: 0.5px solid var(--dm-border);
+  overflow: hidden;
+}
+
+.net-pills {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.net-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 0.5px solid var(--dm-border);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.net-pill:hover { background: var(--color-background-primary); color: var(--color-text-primary); }
+.net-pill[aria-checked='true'] {
+  background: var(--color-background-primary);
+  color: var(--color-text-primary);
+  border-color: var(--dm-border-strong);
+  font-weight: 500;
+}
+.net-pill:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dm-blue); }
+
+.network-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 15px;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+.network-clear-btn:hover { background: rgba(0,0,0,0.06); color: var(--color-text-primary); }
+.network-clear-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dm-blue); }
+
+/* ── Network two-pane layout ──────────────────────────────────────────────────── */
+.network-pane {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.network-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-background-secondary);
+}
+
+/* ── Resize handle ───────────────────────────────────────────────────────── */
+.net-resizer {
+  flex-shrink: 0;
+  width: 4px;
+  cursor: col-resize;
+  background: var(--dm-border);
+  user-select: none;
+  transition: background 0.12s;
+}
+.net-resizer:hover,
+.net-resizer.net-resizer-dragging {
+  background: var(--dm-blue);
+}
+
+.network-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0 12px;
+  height: 36px;
+  flex-shrink: 0;
+  border-bottom: 0.5px solid var(--dm-border);
+  background: var(--color-background-secondary);
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+}
+
+.network-search {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+  outline: none;
+  min-width: 0;
+}
+.network-search::placeholder { color: var(--color-text-tertiary); }
+
+.network-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ── Network request row ──────────────────────────────────────────────────────── */
+.net-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 0.5px solid var(--dm-border);
+  cursor: pointer;
+  min-height: 36px;
+  transition: background 0.08s;
+}
+.net-row:hover { background: var(--color-background-secondary); }
+.net-row[aria-selected='true'] { background: var(--dm-blue-bg); }
+.net-row:focus { outline: none; box-shadow: 0 0 0 2px var(--dm-blue) inset; }
+
+.net-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.net-method {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  background: var(--color-background-secondary);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.net-method--get    { background: #E6F1FB; color: #0C447C; }
+.net-method--post   { background: #E1F5EE; color: #085041; }
+.net-method--put    { background: #FAEEDA; color: #633806; }
+.net-method--delete { background: #FCEBEB; color: #791F1F; }
+.net-method--patch  { background: #FAEEDA; color: #633806; }
+
+.net-url-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.net-url {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.5;
+  display: block;
+}
+
+.net-meta {
+  flex-shrink: 0;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.net-duration {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  line-height: 1.4;
+}
+
+.net-size {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  line-height: 1.4;
+}
+
+/* ── Network list empty states ──────────────────────────────────────────────── */
+.net-list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--color-text-tertiary);
+}
+.net-list-empty .ti { font-size: 24px; margin-bottom: 8px; display: block; }
+.net-list-empty-heading { font-size: 13px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 4px; }
+.net-list-empty-body    { font-size: 12px; }
+
+.net-cap-notice {
+  font-size: 11px;
+  color: var(--dm-amber);
+  padding: 4px 12px;
+  border-bottom: 0.5px solid var(--dm-border);
+}
+
+/* ── Network detail pane ────────────────────────────────────────────────────── */
+.network-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.network-detail-empty {
+  flex: 1;
+}
+
+.network-detail-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.network-detail-header {
+  padding: 12px 16px;
+  border-bottom: 0.5px solid var(--dm-border);
+  flex-shrink: 0;
+}
+
+.network-detail-url {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  word-break: break-all;
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.network-detail-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.net-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+.net-meta-chip .ti { font-size: 12px; }
+.net-meta-chip--ok      { color: #3B6D11; }
+.net-meta-chip--error   { color: #A32D2D; }
+.net-meta-chip--pending { color: var(--dm-amber); }
+
+/* ── Network sub-tabs ───────────────────────────────────────────────────────── */
+.network-subtabs {
+  display: flex;
+  align-items: stretch;
+  height: 34px;
+  flex-shrink: 0;
+  padding: 0 16px;
+  background: var(--color-background-secondary);
+  border-bottom: 0.5px solid var(--dm-border);
+  overflow-x: auto;
+}
+
+.network-subtab {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  height: 100%;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.1s;
+}
+.network-subtab:hover { color: var(--color-text-primary); }
+.net-subtab-active {
+  font-weight: 500;
+  color: var(--color-text-primary);
+  border-bottom-color: var(--color-text-primary);
+}
+.network-subtab:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dm-blue) inset; }
+
+/* ── Network detail search bar ──────────────────────────────────────────────── */
+.network-detail-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  height: 34px;
+  flex-shrink: 0;
+  padding: 0 12px;
+  border-bottom: 0.5px solid var(--dm-border);
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+}
+.network-detail-search[hidden] { display: none; }
+
+.network-dsearch-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+  outline: none;
+  min-width: 0;
+}
+.network-dsearch-input::placeholder { color: var(--color-text-tertiary); }
+
+.network-dsearch-count {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.network-dsearch-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.network-dsearch-clear:hover { background: rgba(0,0,0,0.06); color: var(--color-text-secondary); }
+.network-dsearch-clear:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dm-blue); }
+
+/* ── Network detail content area ────────────────────────────────────────────── */
+.network-detail-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+}
+
+.net-section-label {
+  font-size: 10px;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+/* ── Header table ───────────────────────────────────────────────────────────── */
+.net-header-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  margin-bottom: 12px;
+}
+.net-header-key {
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+  width: 40%;
+  padding: 3px 12px 3px 0;
+  vertical-align: top;
+  word-break: break-all;
+}
+.net-header-val {
+  font-family: var(--font-mono);
+  color: var(--color-text-primary);
+  vertical-align: top;
+  word-break: break-all;
+  padding: 3px 0;
+}
+
+/* ── Code block ─────────────────────────────────────────────────────────────── */
+.net-code-block {
+  background: var(--color-background-secondary);
+  border-radius: 6px;
+  padding: 10px 12px;
+  border: 0.5px solid var(--dm-border);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--color-text-primary);
+}
+
+.net-truncated-notice {
+  font-size: 11px;
+  color: var(--dm-amber);
+  margin-bottom: 8px;
+}
+
+.net-empty-hint {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  padding: 4px 0;
+}
+
+/* ── Image/HTML preview placeholder ────────────────────────────────────────── */
+.net-preview-image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+.net-preview-image-placeholder .ti { font-size: 32px; color: var(--color-text-tertiary); margin-bottom: 8px; display: block; }
+.net-empty-hint-heading { font-size: 13px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 4px; }
+.net-empty-hint-body    { font-size: 12px; color: var(--color-text-tertiary); margin-top: 4px; }
+
+/* ── Timing sub-tab ─────────────────────────────────────────────────────────── */
+.net-timing-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+.net-timing-empty .ti { font-size: 32px; color: var(--color-text-tertiary); margin-bottom: 8px; display: block; }
+
+.net-timing-phases { margin-bottom: 0; }
+
+.net-timing-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.net-timing-label {
+  width: 100px;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.net-timing-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-background-secondary);
+  overflow: hidden;
+}
+
+.net-timing-fill {
+  height: 100%;
+  border-radius: 999px;
+  min-width: 0;
+}
+
+.net-timing-value {
+  width: 40px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.net-timing-total { margin-top: 16px; }
+
+.net-timing-total-val { margin-top: 4px; }
+
+.net-timing-total-num {
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.net-timing-total-unit {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-left: 2px;
+}

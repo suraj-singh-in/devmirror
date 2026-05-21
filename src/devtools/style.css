@@ -1,22 +1,22 @@
 /* ── Design tokens ──────────────────────────────────────────────────────────── */
 :root {
-  --dm-green:            #1D9E75;
-  --dm-green-bg:         #E1F5EE;
-  --dm-red:              #E24B4A;
-  --dm-red-bg:           #FCEBEB;
-  --dm-amber:            #BA7517;
-  --dm-amber-bg:         #FAEEDA;
-  --dm-blue:             #378ADD;
-  --dm-blue-bg:          #E6F1FB;
-  --dm-gray-dot:         #888780;
-  --dm-border:           rgba(0,0,0,0.10);
-  --dm-border-strong:    rgba(0,0,0,0.25);
+  --dm-green: #1D9E75;
+  --dm-green-bg: #E1F5EE;
+  --dm-red: #E24B4A;
+  --dm-red-bg: #FCEBEB;
+  --dm-amber: #BA7517;
+  --dm-amber-bg: #FAEEDA;
+  --dm-blue: #378ADD;
+  --dm-blue-bg: #E6F1FB;
+  --dm-gray-dot: #888780;
+  --dm-border: rgba(0, 0, 0, 0.10);
+  --dm-border-strong: rgba(0, 0, 0, 0.25);
 
-  --color-background-primary:   #fff;
+  --color-background-primary: #fff;
   --color-background-secondary: #f5f5f4;
-  --color-text-primary:         #111;
-  --color-text-secondary:       #555;
-  --color-text-tertiary:        #999;
+  --color-text-primary: #111;
+  --color-text-secondary: #555;
+  --color-text-tertiary: #999;
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
@@ -29,10 +29,22 @@
 }
 
 /* ── Reset ──────────────────────────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-[hidden] { display: none !important; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
-html, body { height: 100%; }
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+}
 
 body {
   display: flex;
@@ -49,10 +61,12 @@ body {
 /* ── SR-only ────────────────────────────────────────────────────────────────── */
 .sr-only {
   position: absolute;
-  width: 1px; height: 1px;
-  padding: 0; margin: -1px;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
   overflow: hidden;
-  clip: rect(0,0,0,0);
+  clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
 }
@@ -65,17 +79,34 @@ body {
   border-radius: 50%;
   flex-shrink: 0;
   background: var(--dm-gray-dot);
+  margin-top: 5px;
 }
+
 .conn-dot[data-state='waiting'] {
   background: var(--dm-gray-dot);
   animation: pulse 1.4s ease-in-out infinite;
 }
-.conn-dot[data-state='connected']    { background: var(--dm-green); animation: none; }
-.conn-dot[data-state='disconnected'] { background: var(--dm-red);   animation: none; }
+
+.conn-dot[data-state='connected'] {
+  background: var(--dm-green);
+  animation: none;
+}
+
+.conn-dot[data-state='disconnected'] {
+  background: var(--dm-red);
+  animation: none;
+}
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.3; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
 }
 
 /* ── Device pill — r:999px, py:4px px:10px, 12px sans (§7, §8.1) ──────────── */
@@ -93,8 +124,15 @@ body {
   min-width: 0;
   overflow: hidden;
 }
-.device-pill[data-state='connected']    { background: var(--dm-green-bg); color: var(--color-text-secondary); }
-.device-pill[data-state='disconnected'] { color: var(--color-text-secondary); }
+
+.device-pill[data-state='connected'] {
+  background: var(--dm-green-bg);
+  color: var(--color-text-secondary);
+}
+
+.device-pill[data-state='disconnected'] {
+  color: var(--color-text-secondary);
+}
 
 .pill-text {
   white-space: nowrap;
@@ -115,9 +153,26 @@ body {
   background: var(--color-background-secondary);
   border-bottom: 0.5px solid var(--dm-border);
 }
-.topbar-left  { display: flex; align-items: center; gap: var(--space-xs); min-width: 0; }
-.topbar-center { display: flex; justify-content: center; min-width: 0; }
-.topbar-right  { display: flex; align-items: center; gap: var(--space-xs); justify-content: flex-end; }
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.topbar-center {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  justify-content: flex-end;
+}
 
 .logo-wordmark {
   font-size: 13px;
@@ -144,19 +199,29 @@ body {
   white-space: nowrap;
   transition: background 0.1s, border-color 0.1s, color 0.1s, transform 0.08s;
 }
-.topbar-btn:hover  {
+
+.topbar-btn:hover {
   background: var(--color-background-secondary);
   border-color: var(--dm-border-strong);
   color: var(--color-text-primary);
 }
+
 .topbar-btn:active {
   background: var(--color-background-secondary);
   border-color: var(--dm-border-strong);
   color: var(--color-text-primary);
   transform: scale(0.97);
 }
-.topbar-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dm-blue); }
-.topbar-btn[aria-disabled='true'] { opacity: 0.4; pointer-events: none; }
+
+.topbar-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dm-blue);
+}
+
+.topbar-btn[aria-disabled='true'] {
+  opacity: 0.4;
+  pointer-events: none;
+}
 
 /* ── Tab bar — h:36px, padding:0 16px (§8.1) ──────────────────────────────── */
 .tabbar {
@@ -169,7 +234,11 @@ body {
   background: var(--color-background-secondary);
   border-bottom: 0.5px solid var(--dm-border);
 }
-.tabs { display: flex; align-items: stretch; }
+
+.tabs {
+  display: flex;
+  align-items: stretch;
+}
 
 /* ── Tab button (§9.1) ─────────────────────────────────────────────────────── */
 .tab {
@@ -189,13 +258,22 @@ body {
   white-space: nowrap;
   transition: background 0.1s, color 0.1s;
 }
-.tab:hover { background: rgba(255,255,255,0.5); color: var(--color-text-primary); }
+
+.tab:hover {
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--color-text-primary);
+}
+
 .tab[aria-selected='true'] {
   font-weight: 500;
   color: var(--color-text-primary);
   border-bottom-color: var(--color-text-primary);
 }
-.tab:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dm-blue) inset; }
+
+.tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dm-blue) inset;
+}
 
 /* ── Console unread badge (§11) ─────────────────────────────────────────────── */
 .tab-badge {
@@ -210,7 +288,15 @@ body {
   vertical-align: middle;
   line-height: 1.4;
 }
-.tab-badge.visible { display: inline-block; }
+
+.tab-badge.visible {
+  display: inline-block;
+}
+
+.tab-badge--network {
+  background: #E1F5EE;
+  color: #085041;
+}
 
 .tabbar-pill-wrap {
   display: flex;
@@ -231,8 +317,15 @@ body {
   font-size: 13px;
   color: var(--dm-amber);
 }
-.reconnect-bar i    { font-size: 14px; flex-shrink: 0; }
-.reconnect-bar[hidden] { display: none; }
+
+.reconnect-bar i {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.reconnect-bar[hidden] {
+  display: none;
+}
 
 /* ── Panels container ───────────────────────────────────────────────────────── */
 .panels {
@@ -248,7 +341,10 @@ body {
   overflow: hidden;
   background: var(--color-background-primary);
 }
-.panel[hidden] { display: none; }
+
+.panel[hidden] {
+  display: none;
+}
 
 /* ── Empty state — shared layout for all tabs (§10.1) ──────────────────────── */
 .empty-state {
@@ -260,6 +356,23 @@ body {
   text-align: center;
   padding: var(--space-xl);
 }
-.empty-state > i  { font-size: 32px; color: var(--color-text-tertiary); }
-.empty-heading    { font-size: 14px; font-weight: 500; color: var(--color-text-secondary); margin-top: 12px; }
-.empty-body       { font-size: 13px; color: var(--color-text-tertiary); margin-top: 4px; max-width: 280px; line-height: 1.5; }
+
+.empty-state>i {
+  font-size: 32px;
+  color: var(--color-text-tertiary);
+}
+
+.empty-heading {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin-top: 12px;
+}
+
+.empty-body {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  margin-top: 4px;
+  max-width: 280px;
+  line-height: 1.5;
+}
