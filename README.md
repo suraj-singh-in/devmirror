@@ -10,7 +10,9 @@
 npx @samosa-code/dev-mirror -p 3000
 ```
 
-<!-- demo gif -->
+<p align="center">
+  <img src="assets/demo.gif" alt="dev-mirror demo" />
+</p>
 
 ---
 
